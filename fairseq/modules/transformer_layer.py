@@ -81,7 +81,7 @@ class TransformerEncoderLayer(nn.Module):
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
-        residual = x
+        residual = x # shape=(seq_len, bsz, embsize) e.g. (4, 1, 1024)
         x = self.maybe_layer_norm(self.self_attn_layer_norm, x, before=True)
         if attn_mask is not None:
             attn_mask = attn_mask.masked_fill(attn_mask.bool(), -1e8)
@@ -108,7 +108,15 @@ class TransformerEncoderLayer(nn.Module):
         return x
 
     def maybe_layer_norm(self, layer_norm, x, before=False, after=False):
+        """ perform layer norm before if self.normalize_beforme is True, otherwise perform after
+            
+        code logic: if before activation_fn(+dropout)+fc2(+dropout)+residual,
+            perform layer norm when self.normalize_before is `True`.
+            if after activation_fn(+dropout)+fc2(+dropout)+residual,
+            perform layer norm when self.normalize_before is `False`
+        """
         assert before ^ after
+        
         if after ^ self.normalize_before:
             return layer_norm(x)
         else:

@@ -40,6 +40,6 @@ class FairseqEncoder(nn.Module):
         """Maximum input length supported by the encoder."""
         return 1e6  # an arbitrary large number
 
-    def upgrade_state_dict(self, state_dict):
-        """Upgrade a (possibly old) state dict for new versions of fairseq."""
-        return state_dict
+    # def upgrade_state_dict(self, state_dict):
+    #     """Upgrade a (possibly old) state dict for new versions of fairseq."""
+    #     return state_dict

@@ -149,7 +149,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         # fmt: on
 
     @classmethod
-    def build_model(cls, args, task):
+    def build_model(cls, args, src_dict, tgt_dict):
         """Build a new model instance."""
 
         # make sure all arguments are present in older models
@@ -165,11 +165,9 @@ class TransformerModel(FairseqEncoderDecoderModel):
         if not hasattr(args, 'max_target_positions'):
             args.max_target_positions = DEFAULT_MAX_TARGET_POSITIONS
 
-        src_dict, tgt_dict = task.source_dictionary, task.target_dictionary
-
         def build_embedding(dictionary, embed_dim, path=None):
-            num_embeddings = len(dictionary)
-            padding_idx = dictionary.pad()
+            num_embeddings = len(dictionary) # vocab_size
+            padding_idx = dictionary.pad() 
             emb = Embedding(num_embeddings, embed_dim, padding_idx)
             # if provided, load from preloaded dictionaries
             if path:
@@ -205,10 +203,18 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
     @classmethod
     def build_encoder(cls, args, src_dict, embed_tokens):
+        """ 
+        args:
+            embed_tokens ( embedding layer )
+        """
         return TransformerEncoder(args, src_dict, embed_tokens)
 
     @classmethod
     def build_decoder(cls, args, tgt_dict, embed_tokens):
+        """ 
+        args:
+            embed_tokens ( embedding layer )
+        """
         return TransformerDecoder(
             args,
             tgt_dict,
@@ -321,12 +327,14 @@ class TransformerEncoder(FairseqEncoder):
 
         self.layer_wise_attention = getattr(args, 'layer_wise_attention', False)
 
+        # a stack of N identical layers
         self.layers = nn.ModuleList([])
         self.layers.extend([
             TransformerEncoderLayer(args)
             for i in range(args.encoder_layers)
         ])
 
+        # whether define layer_norm to perform during forward
         if args.encoder_normalize_before:
             self.layer_norm = LayerNorm(embed_dim)
         else:
@@ -338,6 +346,7 @@ class TransformerEncoder(FairseqEncoder):
 
     def forward_embedding(self, src_tokens):
         # embed tokens and positions
+        # shape=(bsz, seq_len, emb_size) e.g. (1, 4, 1024)
         embed = self.embed_scale * self.embed_tokens(src_tokens)
         if self.embed_positions is not None:
             x = embed + self.embed_positions(src_tokens)
@@ -351,8 +360,12 @@ class TransformerEncoder(FairseqEncoder):
         Args:
             src_tokens (LongTensor): tokens in the source language of shape
                 `(batch, src_len)`
+                shape=(batch_size, src_len)
+                e.g. tensor([[  322,   106, 19454,     2]]='cuda:0')}
             src_lengths (torch.LongTensor): lengths of each source sentence of
-                shape `(batch)`
+                shape `(batch)`, 
+                shape=(batch_size, ) 
+                e.g. tensor([4], device='cuda:0')
             return_all_hiddens (bool, optional): also return all of the
                 intermediate hidden states (default: False).
 
@@ -373,7 +386,7 @@ class TransformerEncoder(FairseqEncoder):
 
         x, encoder_embedding = self.forward_embedding(src_tokens)
 
-        # B x T x C -> T x B x C
+        # B x T x C -> T x B x C or (bsz, seq_len, embsize) -> (seq_len, bsz, embsize)
         x = x.transpose(0, 1)
 
         # compute padding mask
@@ -387,7 +400,7 @@ class TransformerEncoder(FairseqEncoder):
         for layer in self.layers:
             # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
             dropout_probability = random.uniform(0, 1)
-            if not self.training or (dropout_probability > self.encoder_layerdrop):
+            if not self.training or (dropout_probability > self.encoder_layerdrop): # there is a 1-`self.encoder_layerdrop` probability to drop the layer in eval mode
                 x = layer(x, encoder_padding_mask)
                 if return_all_hiddens:
                     encoder_states.append(x)
@@ -707,6 +720,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         """Maximum output length supported by the decoder."""
         if self.embed_positions is None:
             return self.max_target_positions
+        # e.g. 1024, 100,000
         return min(self.max_target_positions, self.embed_positions.max_positions())
 
     def buffered_future_mask(self, tensor):

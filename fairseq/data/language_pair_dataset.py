@@ -118,7 +118,7 @@ class LanguagePairDataset(FairseqDataset):
     A pair of torch.utils.data.Datasets.
 
     Args:
-        src (torch.utils.data.Dataset): source dataset to wrap
+        src (torch.utils.data.Dataset): source dataset to wrap. Specidically, fairseq.data.indexed_dataset.IndexedCachedDataset
         src_sizes (List[int]): source sentence lengths
         src_dict (~fairseq.data.Dictionary): source vocabulary
         tgt (torch.utils.data.Dataset, optional): target dataset to wrap

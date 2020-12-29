@@ -254,7 +254,7 @@ def save_state(
         extra_state = {}
     state_dict = {
         'args': args,
-        'model': model_state_dict if model_state_dict else {},
+        'model': model_state_dict or {},
         'optimizer_history': optim_history + [
             {
                 'criterion_name': criterion.__class__.__name__,

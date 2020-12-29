@@ -1,3 +1,15 @@
+# WMT data
+wmt*/
+
+# debug file
+debug.txt
+
+# file for learning stuff
+learn*.py
+
+# example dir
+examples/
+
 # JetBrains PyCharm IDE
 .idea/
 

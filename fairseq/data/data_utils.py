@@ -64,11 +64,11 @@ def load_indexed_dataset(path, dictionary, dataset_impl=None, combine=False, def
 
     datasets = []
     for k in itertools.count():
-        path_k = path + (str(k) if k > 0 else '')
+        path_k = path + (str(k) if k > 0 else '') # e.g. 'wmt14.en-fr.newstest2014/test.en-fr.en'
 
-        dataset_impl_k = dataset_impl
+        dataset_impl_k = dataset_impl # None
         if dataset_impl_k is None:
-            dataset_impl_k = indexed_dataset.infer_dataset_impl(path_k)
+            dataset_impl_k = indexed_dataset.infer_dataset_impl(path_k) # cached
 
         dataset = indexed_dataset.make_dataset(
             path_k,

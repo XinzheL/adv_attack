@@ -67,7 +67,7 @@ def dataset_exists(path, impl):
     elif impl == 'mmap':
         return MMapIndexedDataset.exists(path)
     else:
-        return IndexedDataset.exists(path)
+        return IndexedDataset.exists(path) 
 
 
 def read_longs(f, n):
@@ -119,20 +119,39 @@ class IndexedDataset(FairseqDataset):
         self.read_index(path)
 
     def read_index(self, path):
-        with open(index_file_path(path), 'rb') as f:
-            magic = f.read(8)
+        """
+        args:
+            path : prefix would be combined with 'idx' to open
+        """
+        def read_longs(f, n):
+            """
+            args:
+                f ( _io.BufferedReader ): with attribute `name` for file, e.g. <_io.BufferedReader name='wmt14.en-fr.newstest2014/test.en-fr.en.idx'>
+                n ( int ) : Shape of the empty array 
+
+            return:
+                a ( numpy.array ) : array with shape (n,) and content from a buffered binary stream f
+
+            """
+            a = np.empty(n, dtype=np.int64) # is numpy array byte array??
+            f.readinto(a)
+            return a
+
+        with open(index_file_path(path), 'rb') as f: # index_file_path(path): e.g. 'wmt14.en-fr.newstest2014/test.en-fr.en.idx'
+            magic = f.read(8) # must be b'TNTIDX\x00\x00'
             assert magic == self._HDR_MAGIC, (
                 'Index file doesn\'t match expected format. '
                 'Make sure that --dataset-impl is configured properly.'
             )
-            version = f.read(8)
+            version = f.read(8) # must be b'\x01\x00\x00\x00\x00\x00\x00\x00'
             assert struct.unpack('<Q', version) == (1,)
-            code, self.element_size = struct.unpack('<QQ', f.read(16))
-            self.dtype = dtypes[code]
-            self._len, self.s = struct.unpack('<QQ', f.read(16))
-            self.dim_offsets = read_longs(f, self._len + 1)
-            self.data_offsets = read_longs(f, self._len + 1)
-            self.sizes = read_longs(f, self.s)
+            code, self.element_size = struct.unpack('<QQ', f.read(16)) # 4, 4
+            self.dtype = dtypes[code] # <class 'numpy.int32'>
+            self._len, self.s = struct.unpack('<QQ', f.read(16)) # (3003, 3003) due to 3003 examples?
+            self.dim_offsets = read_longs(f, self._len + 1) # array shape: (3004,) e.g. array([   0,    1,    2, ..., 3001, 3002, 3003])
+            self.data_offsets = read_longs(f, self._len + 1) # array shape: (3004,)  # e.g. array([    0,    12,    38, ..., 84977, 84993, 85011])
+            self.sizes = read_longs(f, self.s) # array shape: (3004,), e.g. array([12, 26, 53, ..., 15, 16, 18])
+            
 
     def read_data(self, path):
         self.data_file = open(data_file_path(path), 'rb', buffering=0)
@@ -216,11 +235,22 @@ class IndexedCachedDataset(IndexedDataset):
 
     @lru_cache(maxsize=8)
     def __getitem__(self, i):
-        self.check_index(i)
-        tensor_size = self.sizes[self.dim_offsets[i]:self.dim_offsets[i + 1]]
-        a = np.empty(tensor_size, dtype=self.dtype)
+        """ compare to `IndexedDataset`, 
+        1. no `if not self.data_file: self.read_data(self.path)` at the beginning
+        2. same for the next three line
+        3. add to `self.cache` via `self.cache_index`: 
+                `ptx = self.cache_index[i]` and `np.copyto(a, self.cache[ptx: ptx + a.size])`
+           instead 
+           add to `a` via via `self.data_file`: 
+                `self.data_file.seek(self.data_offsets[i] * self.element_size)` and `self.data_file.readinto(a)`
+        """
+        self.check_index(i) 
+        tensor_size = self.sizes[self.dim_offsets[i]:self.dim_offsets[i + 1]] # the sequence length of the ith item
+        a = np.empty(tensor_size, dtype=self.dtype) # initialize sequence index , e.g. [0,0,0] if tensor_size=[3]
+
         ptx = self.cache_index[i]
-        np.copyto(a, self.cache[ptx: ptx + a.size])
+        np.copyto(a, self.cache[ptx: ptx + a.size]) 
+
         item = torch.from_numpy(a).long()
         if self.fix_lua_indexing:
             item -= 1  # subtract 1 for 0-based indexing

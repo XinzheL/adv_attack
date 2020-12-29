@@ -150,7 +150,7 @@ class FairseqTask(object):
                 indices, dataset, max_positions, raise_exception=(not ignore_invalid_inputs),
             )
 
-        # create mini-batches with given size constraints
+        # create mini-batches with given size constraints; indices shape=(3003,); 
         batch_sampler = data_utils.batch_by_size(
             indices, dataset.num_tokens, max_tokens=max_tokens, max_sentences=max_sentences,
             required_batch_size_multiple=required_batch_size_multiple,

@@ -25,7 +25,7 @@ class MultiheadAttention(nn.Module):
         self.embed_dim = embed_dim
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
-        self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
+        self.qkv_same_dim = (self.kdim == embed_dim) and (self.vdim == embed_dim)
 
         self.num_heads = num_heads
         self.dropout = dropout
@@ -96,8 +96,8 @@ class MultiheadAttention(nn.Module):
         before_softmax=False,
         need_head_weights=False,
     ):
-        """Input shape: Time x Batch x Channel
-
+        """Input shape: Time x Batch x Channel ( seq_len, bsz, emb_size) and for self attention, query, key, value are the same
+        
         Args:
             key_padding_mask (ByteTensor, optional): mask to exclude
                 keys that are pads, of shape `(batch, src_len)`, where
@@ -115,24 +115,31 @@ class MultiheadAttention(nn.Module):
         """
         if need_head_weights:
             need_weights = True
-
+        
         tgt_len, bsz, embed_dim = query.size()
         assert embed_dim == self.embed_dim
         assert list(query.size()) == [tgt_len, bsz, embed_dim]
 
         if self.enable_torch_version and not self.onnx_trace and incremental_state is None and not static_kv:
             return F.multi_head_attention_forward(query, key, value,
-                                                  self.embed_dim, self.num_heads,
-                                                  torch.empty([0]),
-                                                  torch.cat((self.q_proj.bias, self.k_proj.bias, self.v_proj.bias)),
-                                                  self.bias_k, self.bias_v,
-                                                  self.add_zero_attn, self.dropout,
-                                                  self.out_proj.weight, self.out_proj.bias,
-                                                  self.training, key_padding_mask, need_weights,
-                                                  attn_mask, use_separate_proj_weight=True,
-                                                  q_proj_weight=self.q_proj.weight,
+                                                  embed_dim_to_check=self.embed_dim, # 1024
+                                                  num_heads=self.num_heads, # 16
+                                                  in_proj_weight=torch.empty([0]),
+                                                  in_proj_bias=torch.cat((self.q_proj.bias, self.k_proj.bias, self.v_proj.bias)), # shape=(1024*3)
+                                                  bias_k=self.bias_k, bias_v=self.bias_v, # None, None
+                                                  add_zero_attn=self.add_zero_attn,  # False
+                                                  dropout_p=self.dropout, # 0.1
+                                                  out_proj_weight=self.out_proj.weight,  # shape=(1024, 1024)
+                                                  out_proj_bias=self.out_proj.bias, # shape=(1024,)
+                                                  training=self.training,  # False
+                                                  key_padding_mask=key_padding_mask,  # None
+                                                  need_weights=need_weights, # True
+                                                  attn_mask=attn_mask, # None                          
+                                                  use_separate_proj_weight=True,
+                                                  q_proj_weight=self.q_proj.weight, # shape=(1024, 1024)
                                                   k_proj_weight=self.k_proj.weight,
                                                   v_proj_weight=self.v_proj.weight)
+                             
 
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)

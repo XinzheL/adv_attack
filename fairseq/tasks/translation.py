@@ -26,7 +26,7 @@ def load_langpair_dataset(
     left_pad_source, left_pad_target, max_source_positions,
     max_target_positions, prepend_bos=False, load_alignments=False,
 ):
-    def split_exists(split, src, tgt, lang, data_path):
+    def split_exists(split, src, tgt, lang, data_path): # check existence of `.idx` and `.bin`
         filename = os.path.join(data_path, '{}.{}-{}.{}'.format(split, src, tgt, lang))
         return indexed_dataset.dataset_exists(filename, impl=dataset_impl)
 
@@ -34,11 +34,11 @@ def load_langpair_dataset(
     tgt_datasets = []
 
     for k in itertools.count():
-        split_k = split + (str(k) if k > 0 else '')
+        split_k = split + (str(k) if k > 0 else '') # e.g. 'valid' or 'test'
 
         # infer langcode
         if split_exists(split_k, src, tgt, src, data_path):
-            prefix = os.path.join(data_path, '{}.{}-{}.'.format(split_k, src, tgt))
+            prefix = os.path.join(data_path, '{}.{}-{}.'.format(split_k, src, tgt)) # e.g 'wmt14.en-fr.newstest2014/test.en-fr.'
         elif split_exists(split_k, tgt, src, src, data_path):
             prefix = os.path.join(data_path, '{}.{}-{}.'.format(split_k, tgt, src))
         else:
@@ -49,7 +49,7 @@ def load_langpair_dataset(
 
         src_datasets.append(
             data_utils.load_indexed_dataset(prefix + src, src_dict, dataset_impl)
-        )
+        ) # prefix + src: 'wmt14.en-fr.newstest2014/test.en-fr.en'
         tgt_datasets.append(
             data_utils.load_indexed_dataset(prefix + tgt, tgt_dict, dataset_impl)
         )
@@ -187,22 +187,23 @@ class TranslationTask(FairseqTask):
         Args:
             split (str): name of the split (e.g., train, valid, test)
         """
-        paths = self.args.data.split(':')
+        paths = self.args.data.split(':') # e.g. ['wmt14.en-fr.newstest2014'] 
         assert len(paths) > 0
-        data_path = paths[epoch % len(paths)]
+        data_path = paths[epoch % len(paths)] # e.g. 'wmt14.en-fr.newstest2014'
 
         # infer langcode
-        src, tgt = self.args.source_lang, self.args.target_lang
+        src, tgt = self.args.source_lang, self.args.target_lang # 'en', 'fr'
 
         self.datasets[split] = load_langpair_dataset(
-            data_path, split, src, self.src_dict, tgt, self.tgt_dict,
-            combine=combine, dataset_impl=self.args.dataset_impl,
-            upsample_primary=self.args.upsample_primary,
-            left_pad_source=self.args.left_pad_source,
-            left_pad_target=self.args.left_pad_target,
-            max_source_positions=self.args.max_source_positions,
-            max_target_positions=self.args.max_target_positions,
-            load_alignments=self.args.load_alignments,
+            data_path, split, 
+            src, self.src_dict, tgt, self.tgt_dict,
+            combine=combine, dataset_impl=self.args.dataset_impl, # False, None
+            upsample_primary=self.args.upsample_primary, # 1
+            left_pad_source=self.args.left_pad_source, # True
+            left_pad_target=self.args.left_pad_target, # False
+            max_source_positions=self.args.max_source_positions, # 1024
+            max_target_positions=self.args.max_target_positions, # 1024
+            load_alignments=self.args.load_alignments, # False
         )
 
     def build_dataset_for_inference(self, src_tokens, src_lengths):

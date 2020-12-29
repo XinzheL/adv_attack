@@ -115,13 +115,15 @@ def parse_args_and_arch(parser, input_args=None, parse_known=False, suppress_def
         ARCH_MODEL_REGISTRY[args.arch].add_args(model_specific_group)
 
     # Add *-specific args to parser.
-    from fairseq.registry import REGISTRIES
+    from fairseq.registry import REGISTRIES # for ['criterion', 'tokenizer', 'bpe', 'optimizer', 'lr_scheduler']
     for registry_name, REGISTRY in REGISTRIES.items():
         choice = getattr(args, registry_name, None)
         if choice is not None:
             cls = REGISTRY['registry'][choice]
             if hasattr(cls, 'add_args'):
                 cls.add_args(parser)
+
+    # add task-specific args
     if hasattr(args, 'task'):
         from fairseq.tasks import TASK_REGISTRY
         TASK_REGISTRY[args.task].add_args(parser)

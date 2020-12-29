@@ -31,7 +31,7 @@ class BaseFairseqModel(nn.Module):
         pass
 
     @classmethod
-    def build_model(cls, args, task):
+    def build_model(cls, args, source_dictionary, target_dictionary):
         """Build a new model instance."""
         raise NotImplementedError('Model must implement the build_model method')
 
@@ -225,6 +225,10 @@ class FairseqEncoderDecoderModel(BaseFairseqModel):
         return decoder_out
 
     def forward_decoder(self, prev_output_tokens, **kwargs):
+        """
+        args:
+            prev_output_tokens ( tensor ) : shape (bsz, generated_tokens_num)
+        """
         return self.decoder(prev_output_tokens, **kwargs)
 
     def extract_features(self, src_tokens, src_lengths, prev_output_tokens, **kwargs):

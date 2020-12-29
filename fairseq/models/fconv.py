@@ -82,7 +82,7 @@ class FConvModel(FairseqEncoderDecoderModel):
         # fmt: on
 
     @classmethod
-    def build_model(cls, args, task):
+    def build_model(cls, args, source_dictionary, target_dictionary):
         """Build a new model instance."""
         # make sure that all args are properly defaulted (in case there are any new ones)
         base_architecture(args)
@@ -90,15 +90,15 @@ class FConvModel(FairseqEncoderDecoderModel):
         encoder_embed_dict = None
         if args.encoder_embed_path:
             encoder_embed_dict = utils.parse_embedding(args.encoder_embed_path)
-            utils.print_embed_overlap(encoder_embed_dict, task.source_dictionary)
+            utils.print_embed_overlap(encoder_embed_dict, source_dictionary)
 
         decoder_embed_dict = None
         if args.decoder_embed_path:
             decoder_embed_dict = utils.parse_embedding(args.decoder_embed_path)
-            utils.print_embed_overlap(decoder_embed_dict, task.target_dictionary)
+            utils.print_embed_overlap(decoder_embed_dict, target_dictionary)
 
         encoder = FConvEncoder(
-            dictionary=task.source_dictionary,
+            dictionary=source_dictionary,
             embed_dim=args.encoder_embed_dim,
             embed_dict=encoder_embed_dict,
             convolutions=eval(args.encoder_layers),
@@ -106,7 +106,7 @@ class FConvModel(FairseqEncoderDecoderModel):
             max_positions=args.max_source_positions,
         )
         decoder = FConvDecoder(
-            dictionary=task.target_dictionary,
+            dictionary=target_dictionary,
             embed_dim=args.decoder_embed_dim,
             embed_dict=decoder_embed_dict,
             convolutions=eval(args.decoder_layers),
@@ -165,7 +165,7 @@ class FConvEncoder(FairseqEncoder):
         self.residuals = []
 
         layer_in_channels = [in_channels]
-        for _, (out_channels, kernel_size, residual) in enumerate(convolutions):
+        for _, (out_channels, kernel_size, residual) in enumerate(convolutions): # ((512, 3, 1),) * 20,
             if residual == 0:
                 residual_dim = out_channels
             else:
@@ -203,48 +203,62 @@ class FConvEncoder(FairseqEncoder):
                 - **encoder_padding_mask** (ByteTensor): the positions of
                   padding elements of shape `(batch, src_len)`
         """
-        # embed tokens and positions
+        # embed tokens and positions. src_tokens shape (bsz, seq_len) ; x shape: (bsz, seq_len, embsize)
         x = self.embed_tokens(src_tokens) + self.embed_positions(src_tokens)
         x = F.dropout(x, p=self.dropout, training=self.training)
         input_embedding = x
 
-        # project to size of convolution
+        # project to size of convolution shape=convolutions[0][0] <-   ((512, 3),) * 20
         x = self.fc1(x)
 
-        # used to mask padding in input
+        # used to mask padding in input. shape=(seq_len, bsz)
         encoder_padding_mask = src_tokens.eq(self.padding_idx).t()  # -> T x B
         if not encoder_padding_mask.any():
             encoder_padding_mask = None
 
-        # B x T x C -> T x B x C
+        # x shape: (bsz, seq_len, embsize) -> (seq_len, bsz, embsize) or B x T x C -> T x B x C
         x = x.transpose(0, 1)
+        
+        residuals = [x]   # actually, the only one we need is the last residual, i.e. x in `y = (x + input_embedding) * math.sqrt(0.5)`
 
-        residuals = [x]
-        # temporal convolutions
-        for proj, conv, res_layer in zip(self.projections, self.convolutions, self.residuals):
+        
+        # temporal convolutions: e.g.
+        # residuals[-1] = last_x
+        # -> projections: 0-5:None*6;       6:(512,768);    7-9:None;         10:(768,1024);    11-12: None;           13:(1024,2048);   14:(2048, 4096)           
+        # x
+        # -> 15 ConvTBC:  0-5:(512,1024,3); 6:(512,1536,3); 7-9:(768,1536,3); 10:(768, 2048,3); 11-12:(1024, 2048, 3); 13:(1024,4096,1); 14:(2048, 8192,1)
+        # x = (x + residual) * math.sqrt(0.5)
+        for proj, conv, res_layer in zip(self.projections, self.convolutions, self.residuals): # residuals: 15*[1]
+            #*****Short-cut Path*****
+            # define residual for residual connection at the end of loop (I prefer to moving it to the loop end!) & mask fill & dropout
             if res_layer > 0:
-                residual = residuals[-res_layer]
-                residual = residual if proj is None else proj(residual)
+                residual = residuals[-res_layer] # shape TBC
+                residual = residual if proj is None else proj(residual)  # project into expected C matching channel dim of convTBC+glu output
             else:
                 residual = None
+            #*****
 
             if encoder_padding_mask is not None:
                 x = x.masked_fill(encoder_padding_mask.unsqueeze(-1), 0)
 
             x = F.dropout(x, p=self.dropout, training=self.training)
-            if conv.kernel_size[0] % 2 == 1:
+
+            # conv
+            if conv.kernel_size[0] % 2 == 1: # kernel height is odd 
                 # padding is implicit in the conv
                 x = conv(x)
-            else:
+            else: # kernel height is even
                 padding_l = (conv.kernel_size[0] - 1) // 2
                 padding_r = conv.kernel_size[0] // 2
                 x = F.pad(x, (0, 0, 0, 0, padding_l, padding_r))
                 x = conv(x)
-            x = F.glu(x, dim=2)
+            x = F.glu(x, dim=2) # use glu to select the important information and recover the original channel； x[0][0]: 1024 -> a: 512 | b: 512 -> a x sigmoid(b): 512
 
+            #*****Short-cut Path*****
             if residual is not None:
-                x = (x + residual) * math.sqrt(0.5)
+                x = (x + residual) * math.sqrt(0.5) # add residual connections for the input of each convolution and block output
             residuals.append(x)
+            #*****
 
         # T x B x C -> B x T x C
         x = x.transpose(1, 0)
@@ -263,15 +277,17 @@ class FConvEncoder(FairseqEncoder):
         y = (x + input_embedding) * math.sqrt(0.5)
 
         return {
-            'encoder_out': (x, y),
+            'encoder_out': (x, y), # x is the last residual
             'encoder_padding_mask': encoder_padding_mask,  # B x T
         }
 
     def reorder_encoder_out(self, encoder_out, new_order):
+        """ reorder encoder ouput on the batch dimension, i.e. kind of shuffling batch samples
+        """
         if encoder_out['encoder_out'] is not None:
             encoder_out['encoder_out'] = (
-                encoder_out['encoder_out'][0].index_select(0, new_order),
-                encoder_out['encoder_out'][1].index_select(0, new_order),
+                encoder_out['encoder_out'][0].index_select(0, new_order), # for x (shape: BTC): the last residual
+                encoder_out['encoder_out'][1].index_select(0, new_order), # for y (shape: BTC): residual + embedding
             )
         if encoder_out['encoder_padding_mask'] is not None:
             encoder_out['encoder_padding_mask'] = \
@@ -307,11 +323,11 @@ class AttentionLayer(nn.Module):
                 float('-inf')
             ).type_as(x)  # FP16 support: cast to float and back
 
-        # softmax over last dim
-        sz = x.size()
-        x = F.softmax(x.view(sz[0] * sz[1], sz[2]), dim=1)
-        x = x.view(sz)
-        attn_scores = x
+        # softmax over last dim which is embedding dim
+        sz = x.size() 
+        x = F.softmax(x.view(sz[0] * sz[1], sz[2]), dim=1) # (B*T, C)
+        x = x.view(sz) # # (B, T, C)
+        attn_scores = x # (B, T, C)
 
         x = self.bmm(x, encoder_out[1])
 
@@ -349,7 +365,7 @@ class FConvDecoder(FairseqIncrementalDecoder):
         self.dropout = dropout
         self.need_attn = True
 
-        convolutions = extend_conv_spec(convolutions)
+        convolutions = extend_conv_spec(convolutions) # ((512, 3, 1),) * 20
         in_channels = convolutions[0][0]
         if isinstance(attention, bool):
             # expand True into [True, True, ...] and do the same with False
@@ -376,13 +392,13 @@ class FConvDecoder(FairseqIncrementalDecoder):
         self.attention = nn.ModuleList()
         self.residuals = []
 
-        layer_in_channels = [in_channels]
-        for i, (out_channels, kernel_size, residual) in enumerate(convolutions):
+        layer_in_channels = [in_channels] # [512]
+        for i, (out_channels, kernel_size, residual) in enumerate(convolutions): # ((512, 3, 1),) * 20
             if residual == 0:
                 residual_dim = out_channels
             else:
-                residual_dim = layer_in_channels[-residual]
-            self.projections.append(Linear(residual_dim, out_channels)
+                residual_dim = layer_in_channels[-residual] # 512
+            self.projections.append(Linear(residual_dim, out_channels) 
                                     if residual_dim != out_channels else None)
             self.convolutions.append(
                 LinearizedConv1d(in_channels, out_channels * 2, kernel_size,
@@ -413,28 +429,50 @@ class FConvDecoder(FairseqIncrementalDecoder):
                 self.fc3 = Linear(out_embed_dim, num_embeddings, dropout=dropout)
 
     def forward(self, prev_output_tokens, encoder_out=None, incremental_state=None, **unused):
+        """
+        Args:
+            prev_output_tokens (LongTensor): tokens already generated by the decoder in the target language
+
+            encoder_out ( dict )
+                - **encoder_out** (tuple): a tuple with two elements, where the
+                  first element is the last encoder layer's output and the
+                  second element is the same quantity summed with the input
+                  embedding (used for attention). The shape of both tensors is
+                  `(batch, src_len, embed_dim)`.
+                - **encoder_padding_mask** (ByteTensor): the positions of
+                  padding elements of shape `(batch, src_len)`
+        """
+        
         if encoder_out is not None:
             encoder_padding_mask = encoder_out['encoder_padding_mask']
-            encoder_out = encoder_out['encoder_out']
+            encoder_out = encoder_out['encoder_out'] # (x: , y)
 
             # split and transpose encoder outputs
-            encoder_a, encoder_b = self._split_encoder_out(encoder_out, incremental_state)
+            # encoder_a : residual with shape BCT ; 
+            # encoder_b: residual + embeddings with shape BTC
+            encoder_a, encoder_b = self._split_encoder_out(encoder_out, incremental_state) 
 
+        # deal with `prev_output_tokens` (bottom left part of Figure 3 in the original paper)
+
+        # 1). positional embedding with shape: (bsz, prev_output_num, emb_size)
         if self.embed_positions is not None:
-            pos_embed = self.embed_positions(prev_output_tokens, incremental_state)
+            pos_embed = self.embed_positions(prev_output_tokens, incremental_state) 
         else:
             pos_embed = 0
 
+        # 2). take the embedding of last one output token
         if incremental_state is not None:
             prev_output_tokens = prev_output_tokens[:, -1:]
-        x = self._embed_tokens(prev_output_tokens, incremental_state)
+        x = self._embed_tokens(prev_output_tokens, incremental_state) # shape: (bsz, 1, emb_size)
 
-        # embed tokens and combine with positional embeddings
-        x += pos_embed
+        # 3). embed tokens and combine with positional embeddings
+        x += pos_embed # ?how? (bsz, prev_output_num, emb_size) + (bsz, 1, emb_size)
         x = F.dropout(x, p=self.dropout, training=self.training)
         target_embedding = x
 
-        # project to size of convolution
+        # 4). through convolution layers
+
+        # project to size of convolution, eg. (bsz, prev_output_num, 768) -> (bsz, prev_output_num, 512)
         x = self.fc1(x)
 
         # B x T x C -> T x B x C
@@ -442,26 +480,34 @@ class FConvDecoder(FairseqIncrementalDecoder):
 
         # temporal convolutions
         avg_attn_scores = None
-        num_attn_layers = len(self.attention)
+        num_attn_layers = len(self.attention) # e.g. 15
         residuals = [x]
+
+        # 15 layers for attention each with Linear + BeamableMM:
+        # Linear projection 0-5: 512 768 512;  6-9: 768 768 768;  10-12:  1024 768 1024; 13: 2048 768 2048; 14:  4096 768 4096
         for proj, conv, attention, res_layer in zip(self.projections, self.convolutions, self.attention,
                                                     self.residuals):
+
+            #*****Short-cut Path*****
             if res_layer > 0:
                 residual = residuals[-res_layer]
                 residual = residual if proj is None else proj(residual)
             else:
                 residual = None
+            #*****
 
+            # Main Path: conv
             x = F.dropout(x, p=self.dropout, training=self.training)
             x = conv(x, incremental_state)
             x = F.glu(x, dim=2)
 
-            # attention
+            # Main Path: attention
             if attention is not None:
                 x = self._transpose_if_training(x, incremental_state)
 
                 x, attn_scores = attention(x, target_embedding, (encoder_a, encoder_b), encoder_padding_mask)
 
+                # calculate attenetion scores
                 if not self.training and self.need_attn:
                     attn_scores = attn_scores / num_attn_layers
                     if avg_attn_scores is None:
@@ -471,10 +517,12 @@ class FConvDecoder(FairseqIncrementalDecoder):
 
                 x = self._transpose_if_training(x, incremental_state)
 
+            #*****Short-cut Path*****
             # residual
             if residual is not None:
                 x = (x + residual) * math.sqrt(0.5)
             residuals.append(x)
+            #*****
 
         # T x B x C -> B x T x C
         x = self._transpose_if_training(x, incremental_state)
@@ -527,9 +575,9 @@ class FConvDecoder(FairseqIncrementalDecoder):
             return cached_result
 
         # transpose only once to speed up attention layers
-        encoder_a, encoder_b = encoder_out
-        encoder_a = encoder_a.transpose(1, 2).contiguous()
-        result = (encoder_a, encoder_b)
+        encoder_a, encoder_b = encoder_out # (x, y) : x is the last residual and y is residual + embeddings
+        encoder_a = encoder_a.transpose(1, 2).contiguous() # shape BTC -> BCT
+        result = (encoder_a, encoder_b) 
 
         if incremental_state is not None:
             utils.set_incremental_state(self, incremental_state, 'encoder_out', result)

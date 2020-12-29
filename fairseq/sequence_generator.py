@@ -104,6 +104,9 @@ class SequenceGenerator(object):
         Args:
             models (List[~fairseq.models.FairseqModel]): ensemble of models
             sample (dict): batch
+                           {'net_input': {'src_lengths': tensor([4], device='cuda:0'), 
+                                          'src_tokens': tensor([[  322,   106, 19454,     2]]='cuda:0')},
+                            'ntokens': 4}
             prefix_tokens (torch.LongTensor, optional): force decoder to begin
                 with these tokens
             bos_token (int, optional): beginning of sentence token
@@ -131,25 +134,34 @@ class SequenceGenerator(object):
             if k != 'prev_output_tokens'
         }
 
+        # (batch_size, src_lengths) e.g. tensor([[  322,   106, 19454,     2]], device='cuda:0')
         src_tokens = encoder_input['src_tokens']
+
+        # (batch_size, ) e.g. tensor([3], device='cuda:0')
         src_lengths = (src_tokens.ne(self.eos) & src_tokens.ne(self.pad)).long().sum(dim=1)
+        
+        # e.g. torch.Size([1, 4]) where 1 is batch_size and 4 is src_len
         input_size = src_tokens.size()
-        # batch dimension goes first followed by source lengths
         bsz = input_size[0]
         src_len = input_size[1]
+
+        # e.g. 1
         beam_size = self.beam_size
 
+
+        # max_len
         if self.match_source_len:
             max_len = src_lengths.max().item()
         else:
             max_len = min(
+                # default: 0 * src_len + 200 = 200
                 int(self.max_len_a * src_len + self.max_len_b),
-                # exclude the EOS marker
+                # exclude the EOS marker, e.g. 1024 - 1 = 1023
                 model.max_decoder_positions() - 1,
             )
 
         # compute the encoder output for each beam
-        encoder_outs = model.forward_encoder(encoder_input)
+        encoder_outs = model.forward_encoder(encoder_input) # e.g. [{'encoder_out': (x, y), # x is the last residual with shape BTC, 'encoder_padding_mask': None}]
         new_order = torch.arange(bsz).view(-1, 1).repeat(1, beam_size).view(-1)
         new_order = new_order.to(src_tokens.device).long()
         encoder_outs = model.reorder_encoder_out(encoder_outs, new_order)
@@ -165,16 +177,16 @@ class SequenceGenerator(object):
         # The blacklist indicates candidates that should be ignored.
         # For example, suppose we're sampling and have already finalized 2/5
         # samples. Then the blacklist would mark 2 positions as being ignored,
-        # so that we only finalize the remaining 3 samples.
+        # so that we only finalize the remaining 3 samples. 
         blacklist = src_tokens.new_zeros(bsz, beam_size).eq(-1)  # forward and backward-compatible False mask
 
         # list of completed sentences
         finalized = [[] for i in range(bsz)]
         finished = [False for i in range(bsz)]
         num_remaining_sent = bsz
-
         # number of candidate hypos per step
         cand_size = 2 * beam_size  # 2 x beam size in case half are EOS
+
 
         # offset arrays for converting between different indexing schemes
         bbsz_offsets = (torch.arange(0, bsz) * beam_size).unsqueeze(1).type_as(tokens)
@@ -279,6 +291,7 @@ class SequenceGenerator(object):
                     newly_finished.append(unfin_idx)
             return newly_finished
 
+        # the next loop to generate ouput from decoder
         reorder_state = None
         batch_idxs = None
         for step in range(max_len + 1):  # one extra step for EOS marker
@@ -291,9 +304,10 @@ class SequenceGenerator(object):
                 model.reorder_incremental_state(reorder_state)
                 encoder_outs = model.reorder_encoder_out(encoder_outs, reorder_state)
 
+            # tokens shape: (bsz, maxlen+2) with the first one bos or eos
             lprobs, avg_attn_scores = model.forward_decoder(
                 tokens[:, :step + 1], encoder_outs, temperature=self.temperature,
-            )
+            ) 
 
             lprobs[:, self.pad] = -math.inf  # never select pad
             lprobs[:, self.unk] -= self.unk_penalty  # apply unk penalty
@@ -518,6 +532,11 @@ class SequenceGenerator(object):
             finalized[sent] = sorted(finalized[sent], key=lambda r: r['score'], reverse=True)
         return finalized
 
+        ############ End of `_generate()`
+
+
+
+
 
 class EnsembleModel(torch.nn.Module):
     """A wrapper around an ensemble of models."""
@@ -537,12 +556,17 @@ class EnsembleModel(torch.nn.Module):
 
     @torch.no_grad()
     def forward_encoder(self, encoder_input):
+        """
+        args:
+            encoder_input: e.g. {'src_lengths': tensor([4], device='cuda:0'), 
+                                 'src_tokens': tensor([[  322,   106, 19454,     2]]='cuda:0')}
+        """
         if not self.has_encoder():
             return None
         return [model.encoder(**encoder_input) for model in self.models]
 
     @torch.no_grad()
-    def forward_decoder(self, tokens, encoder_outs, temperature=1.):
+    def forward_decoder(self, tokens, encoder_outs, temperature=1.): # could be called from `SequenceGenerator._generate()`
         if len(self.models) == 1:
             return self._decode_one(
                 tokens,
@@ -578,11 +602,17 @@ class EnsembleModel(torch.nn.Module):
     def _decode_one(
         self, tokens, model, encoder_out, incremental_states, log_probs,
         temperature=1.,
-    ):
+    ): # could be called from forward_decoder()
+        """
+        args:
+            incremental_states ( dict ) : keys are model object, e.g. FConvModel ; values are (?? so far)
+        """
+        
         if self.incremental_states is not None:
+            # ([1, 1, vocab_size: 43807])
             decoder_out = list(model.forward_decoder(
                 tokens, encoder_out=encoder_out, incremental_state=self.incremental_states[model],
-            ))
+            )) 
         else:
             decoder_out = list(model.forward_decoder(tokens, encoder_out=encoder_out))
         decoder_out[0] = decoder_out[0][:, -1:, :]

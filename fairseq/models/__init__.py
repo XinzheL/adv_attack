@@ -45,7 +45,12 @@ __all__ = [
 
 
 def build_model(args, task):
-    return ARCH_MODEL_REGISTRY[args.arch].build_model(args, task)
+    model_arch = ARCH_MODEL_REGISTRY[args.arch]
+
+    if  "transformer" in args.arch:
+        model_arch.build_model(args, task.source_dictionary, task.target_dictionary)
+        
+    return model_arch.build_model(args, task) 
 
 
 def register_model(name):
@@ -130,8 +135,12 @@ for file in os.listdir(models_dir):
         # extra `model_parser` for sphinx
         if model_name in MODEL_REGISTRY:
             parser = argparse.ArgumentParser(add_help=False)
+            # archs for parser
             group_archs = parser.add_argument_group('Named architectures')
             group_archs.add_argument('--arch', choices=ARCH_MODEL_INV_REGISTRY[model_name])
+            # args for parser from model-object method: model.add_args()
             group_args = parser.add_argument_group('Additional command-line arguments')
             MODEL_REGISTRY[model_name].add_args(group_args)
+            
+            # save model-specific args parser as global
             globals()[model_name + '_parser'] = parser
