@@ -1,6 +1,5 @@
 from copy import deepcopy
 import logging
-logging.basicConfig(filename='debug.txt', level=logging.DEBUG)
 import torch
 from fairseq import checkpoint_utils, options, tasks, utils
 from fairseq.data import iterators, encoders
@@ -63,21 +62,39 @@ def process_sample(sample, bpe, dictionary, bpe_vocab_size):
 
 # runs the samples through the model and fills extracted_grads with the gradient w.r.t. the embedding
 def get_loss_and_input_grad(trainer, samples, target_mask=None, no_backwards=False, reduce_loss=True):
-    trainer._set_seed()
+    trainer._set_seed() # torch.manual_seed(seed), torch.cuda.manual_seed(seed)
     trainer.get_model().eval() # we want grads from eval() to turn off dropout and stuff    
-    trainer.zero_grad() # optimizer.zero_grad()
+    trainer.optimizer.zero_grad() # optimizer.zero_grad()
 
     # fills extracted_grads with the gradient w.r.t. the embedding
-    sample = trainer._prepare_sample(samples)
-    loss, _, _, = trainer.criterion(trainer.get_model(), sample, reduce=reduce_loss)    
+    sample = trainer._prepare_sample(samples)  # cuda ; float16
+    loss, _, _, = trainer.criterion(trainer.get_model(), sample, reduce=reduce_loss)  # hook gra during forward
     if not no_backwards:
-        trainer.optimizer.backward(loss)
+        trainer.optimizer.backward(loss) # loss.backward() <- omputes the sum of gradients of the given tensor w.r.t. graph leaves.
     return sample['net_input']['src_lengths'], loss.detach().cpu()
+
+
+
+def invalid_input_bpe_segmentation(src_tokens, bpe, src_dict, cpu=False):
+    """
+    there are cases where making a BPE swap would cause the BPE segmentation to change.
+    in other words, the input we are using would be invalid because we are using an old segmentation
+    for these cases, we just skip those candidates            
+    """
+    string_input_tokens = bpe.decode(src_dict.string(src_tokens, None))
+    retokenized_string_input_tokens = src_dict.encode_line(bpe.encode(string_input_tokens)).long().unsqueeze(dim=0)
+    if torch.cuda.is_available() and not cpu:
+        retokenized_string_input_tokens = retokenized_string_input_tokens.cuda()
+    if len(retokenized_string_input_tokens[0]) != len(src_tokens) or \
+        not torch.all(torch.eq(retokenized_string_input_tokens[0],src_tokens)):
+        
+        return True
+    return False
 
 
 # take samples (which is batch size 1) and repeat it batch_size times to do batched inference / loss calculation
 # for all of the possible attack candidates
-def build_inference_samples(samples, batch_size, args, candidate_input_tokens, trainer, bpe, changed_positions=None, untouchable_token_blacklist=None, adversarial_token_blacklist=None, num_trigger_tokens=None):
+def build_inference_samples_orig(samples, batch_size, args, candidate_input_tokens, trainer, bpe, changed_positions=None, untouchable_token_blacklist=None, adversarial_token_blacklist=None, num_trigger_tokens=None):
     # copy and repeat the samples instead batch size elements
     samples_repeated_by_batch = deepcopy(samples)
     samples_repeated_by_batch['ntokens'] *= batch_size
@@ -143,12 +160,73 @@ def build_inference_samples(samples, batch_size, args, candidate_input_tokens, t
 
     return all_inference_samples, all_changed_positions
 
-def get_attack_candidates(trainer, samples, embedding_weight, num_gradient_candidates=500, target_mask=None, increase_loss=False):
-    # clear grads, compute new grads, and get candidate tokens
-    global extracted_grads; extracted_grads = [] # clear old extracted_grads
-    src_lengths, _ = get_loss_and_input_grad(trainer, samples, target_mask=target_mask) # gradient is now filled
+# take samples (which is batch size 1) and repeat it batch_size times to do batched inference / loss calculation
+# for all of the possible attack candidates ; `prev_output_tokens` is the right shift of `src_tokens` and starts with eos 
+def build_inference_samples(samples, batch_size, args, candidate_input_tokens, trainer, bpe, untouchable_token_blacklist=None, adversarial_token_blacklist=None):
+    # copy and repeat the samples instead batch size elements
+    samples_repeated_by_batch = deepcopy(samples)
+    samples_repeated_by_batch['ntokens'] *= batch_size # e.g. 4 ->256
+    samples_repeated_by_batch['target'] = samples_repeated_by_batch['target'].repeat(batch_size, 1) # e.g. shape: (B:1, T_y_hat) -> (B:64, T_y_hat) 
+    samples_repeated_by_batch['net_input']['prev_output_tokens'] = samples_repeated_by_batch['net_input']['prev_output_tokens'].repeat(batch_size, 1) # e.g. shape: (B:1, T_y_hat) -> (B:64, T_y_hat) 
+    samples_repeated_by_batch['net_input']['src_tokens'] = samples_repeated_by_batch['net_input']['src_tokens'].repeat(batch_size, 1) # e.g. shape: (B:1, T_x) -> (B:64, T_x) 
+    samples_repeated_by_batch['net_input']['src_lengths'] = samples_repeated_by_batch['net_input']['src_lengths'].repeat(batch_size, 1) # e.g. shape: (1) -> (B: 64, 1)
+    samples_repeated_by_batch['nsentences'] = batch_size 
+
+    all_inference_samples = [] # stores a list of batches of candidates
+    all_changed_positions = [] # stores all the changed_positions for each batch element
+
     
+    current_batch_changed_position = []
+    current_inference_samples = deepcopy(samples_repeated_by_batch) # stores one batch worth of candidates
+    net_input = current_inference_samples['net_input']
+    batch_idx = 0
+    for pos in range(len(candidate_input_tokens)): # for all T-1 positions in the input 
+        for token_id in candidate_input_tokens[pos]: # for all k candidates 
+
+            # for targeted flips
+            # don't touch the word if its in the blacklist
+            if untouchable_token_blacklist is not None and net_input['src_tokens'][batch_idx][pos] in untouchable_token_blacklist:
+                continue
+            # don't insert any blacklisted tokens into the source side
+            if adversarial_token_blacklist is not None and any([token_id == blacklisted_token for blacklisted_token in adversarial_token_blacklist]): 
+                continue
+            
+            # `current_inference_samples` src_tokens changed inplaced: change one token or not if invalid
+            original_token = deepcopy(net_input['src_tokens'][batch_idx][pos]) 
+            net_input['src_tokens'][batch_idx][pos] = torch.LongTensor([token_id]).squeeze(0) 
+            # check invalid_input_bpe_segmentation
+            if invalid_input_bpe_segmentation(net_input['src_tokens'][batch_idx], bpe, trainer.task.source_dictionary, trainer.args.cpu):
+                # undo the token we replaced and move to the next candidate
+                net_input['src_tokens'][batch_idx][pos] = original_token
+                # continue to keep batch_idx unchanged so that next loop will change the same item in `current_inference_samples`
+                continue
+
+            # `current_batch_changed_position` 
+            current_batch_changed_position.append(pos) 
+            batch_idx += 1
+
+            if batch_idx == batch_size:
+                all_inference_samples.append(deepcopy(current_inference_samples))
+                all_changed_positions.append(current_batch_changed_position)
+
+                # update to build another batch during the loop
+                current_batch_changed_position = []
+                current_inference_samples = deepcopy(samples_repeated_by_batch) # stores one batch worth of candidates
+                net_input = current_inference_samples['net_input']
+                batch_idx = 0
+                        
+                
+
+    return all_inference_samples, all_changed_positions
+
+
+
+def get_attack_candidates(trainer, samples, embedding_weight, num_gradient_candidates=500, target_mask=None, increase_loss=False):
     # 1. get grad of L_adv w.r.t. encoder embedding 
+    # clear grads, compute new grads, and get candidate tokens
+    global extracted_grads; extracted_grads = [] # clear old extracted_grads wiwth list of tensors (shape: B, T, C)
+    src_lengths, _ = get_loss_and_input_grad(trainer, samples, target_mask=target_mask) # gradient is hooked during forward
+    
     # for models with shared embeddings, position 1 in extracted_grads will be the encoder grads, 0 is decoder
     # ?? how shared embeddings work during backward pass
     if len(extracted_grads) > 1:
@@ -159,19 +237,19 @@ def get_attack_candidates(trainer, samples, embedding_weight, num_gradient_candi
     # first [] gets decoder/encoder grads specified by `gradient_position`, 
     # then gets ride of batch (we have batch size 1) specified by `[0]`
     # then we index into before the padding (though there shouldn't be any padding because we do batch size 1).
-    # the -1 is to ignore the pad symbol.
+    # the -1 is to ignore the eos symbol 
     input_gradient = extracted_grads[gradient_position][0][0:src_lengths[0]-1].cpu() 
-    input_gradient = input_gradient.unsqueeze(0) # unsqueeze the batch dim
+    input_gradient = input_gradient.unsqueeze(0) # unsqueeze the batch dim ; Shape: (B, T-1, C)
 
     # 2. dot product a) grad of L_adv w.r.t. encoder embedding and b) emb
-    # shape (1, 3, 1024) * (32768, 1024) - > (1,3,32768)
+    # shape (B, T-1, C) * (vocab_size, C) - > (B,T-1,vocab_size)
     gradient_dot_embedding_matrix = torch.einsum("bij,kj->bik", (input_gradient, embedding_weight))
 
     # 3. 
     if not increase_loss:
         gradient_dot_embedding_matrix *= -1    # lower versus increase the class probability.
     if num_gradient_candidates > 1: # get top k options
-        _, best_k_ids = torch.topk(gradient_dot_embedding_matrix, num_gradient_candidates, dim=2)
+        _, best_k_ids = torch.topk(gradient_dot_embedding_matrix, k=num_gradient_candidates, dim=2) # shape=(B. T-1, k)
         return best_k_ids.detach().cpu().numpy()[0]
     else:
         _, best_at_each_step = gradient_dot_embedding_matrix.max(2)

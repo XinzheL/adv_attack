@@ -38,9 +38,9 @@ class CrossEntropyCriterion(FairseqCriterion):
         return loss, sample_size, logging_output
 
     def compute_loss(self, model, net_output, sample, reduce=True):
-        lprobs = model.get_normalized_probs(net_output, log_probs=True)
-        lprobs = lprobs.view(-1, lprobs.size(-1))
-        target = model.get_targets(sample, net_output).view(-1)
+        lprobs = model.get_normalized_probs(net_output, log_probs=True) # use torch.nn.functional.log_softmax -> shape: BTC
+        lprobs = lprobs.view(-1, lprobs.size(-1))  # shape:(B*T, C)
+        target = model.get_targets(sample, net_output).view(-1) # sample['target'] shape: (B*T, )
         loss = F.nll_loss(
             lprobs,
             target,
