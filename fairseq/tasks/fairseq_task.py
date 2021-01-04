@@ -140,9 +140,10 @@ class FairseqTask(object):
         # initialize the dataset with the correct starting epoch
         dataset.set_epoch(epoch)
 
-        # get indices ordered by example size
-        with data_utils.numpy_seed(seed):
-            indices = dataset.ordered_indices()
+        if seed is not None:
+            # get indices ordered by example size
+            with data_utils.numpy_seed(seed):
+                indices = dataset.ordered_indices()
 
         # filter examples that are too large
         if max_positions is not None:
