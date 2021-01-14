@@ -3,6 +3,28 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+
+# `fairseq.options module`
+
+# Step 1: Parser could be constructed 
+# by calling `options.get_parser()` (basic)
+# or `options.get_training_parser()` (if we want to specify more specific arguments)
+
+# Step 2: add more specific arguments into Parser
+# arguments *specified in Step 1 would be parsed with user' inputs and then used to generated, 
+# * includes 
+#   a. Basic arguments in REGISTRIES: 'criterion', 'tokenizer', 'bpe', 'optimizer', 'lr_scheduler'
+#   b. 'arch', REGISTRIES, 'task' specific argument
+
+# Step 3: a second time parse after adding the *-specific arguments.
+# If `input_args` is given, we will parse those args instead of sys.argv.
+
+# Step 2, 3 are done 
+# by calling `options.parse_args_and_arch()`
+
+
+# setup the default parameters. 
+
 import argparse
 
 import torch
