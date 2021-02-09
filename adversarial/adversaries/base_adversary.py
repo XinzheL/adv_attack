@@ -11,7 +11,7 @@ class BaseAdversary(nn.Module):
         self.src_dict = task.src_dict
         self.tgt_dict = task.tgt_dict
         self.args = args
-        self.constraints = AdversarialConstraints(args, task)
+        # self.constraints = AdversarialConstraints(args, task)
 
     def forward(self, sample, input_gradients):
         """Takes in a sample and the gradients of some adversarial criterion

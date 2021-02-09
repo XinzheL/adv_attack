@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# This code framework is heavily inspired by
+# the nice code of Paul Michel here https://github.com/pmichel31415/translate/blob/paul/
+# pytorch_translate/research/adversarial/adversaries
+# which is highly consistent with fairseq implementation
 
 import importlib
 import os

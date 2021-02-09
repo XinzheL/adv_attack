@@ -4,24 +4,28 @@ import math
 import torch
 import numpy as np
 import torch.nn.functional as F
-
-from fairseq import utils
-from fairseq.criterions import FairseqCriterion, register_criterion, CRITERION_REGISTRY
+from torch.nn.modules.loss import _Loss
 
 
-def build_criterion(args, task):
-    """Same as fairseq.criterions.build_criterion but for adversarial criterion"""
-    return CRITERION_REGISTRY[args.adv_criterion](args, task)
 
-
-@register_criterion("all_bad_words")
-class AllBadWordsCriterion(FairseqCriterion):
+def item(tensor):
+    if hasattr(tensor, 'item'):
+        return tensor.item()
+    if hasattr(tensor, '__getitem__'):
+        return tensor[0]
+    return tensor
+    
+# @register_criterion("all_bad_words")
+class AllBadWordsCriterion(_Loss):
     """This is essentially the negation of CrossEntropyCriterion.
     Instead of optimizing P[w1 AND w2 AND...] we optimize
     P[(NOT w1) AND (NOT w2) AND...]
     Notice that this is *not* the same as reversing the nll objective (which
     would mean optimizing P[(NOT w1) OR (NOT w2) OR...])
     """
+    def __init__(self, args):
+        super().__init__()
+        self.args = args
 
     def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.
@@ -54,13 +58,16 @@ class AllBadWordsCriterion(FairseqCriterion):
         # Negate because we're minimizing the criterion
         loss = -loss
 
+        # Negate the loss in order to maximize it by selecting candidates with top scores(scores would be calculated using grad x E) 
+        # loss = -loss
+
         if self.args.sentence_avg:
             sample_size = sample["target"].size(0)
         else:
             sample_size = sample["ntokens"]
 
         logging_output = {
-            "loss": utils.item(loss.data) if reduce else loss.data,
+            "loss": item(loss.data) if reduce else loss.data,
             "ntokens": sample["ntokens"],
             "sample_size": sample_size,
         }
@@ -81,8 +88,8 @@ class AllBadWordsCriterion(FairseqCriterion):
         return agg_output
 
 
-@register_criterion("force_words")
-class ForceWordsCriterion(FairseqCriterion):
+# @register_criterion("force_words")
+class ForceWordsCriterion(_Loss):
     """This forces the model to generate a specific word or set of words."""
 
     def __init__(self, args, task):
@@ -202,7 +209,7 @@ class ForceWordsCriterion(FairseqCriterion):
             sample_size = sample["ntokens"]
 
         logging_output = {
-            "loss": utils.item(final_loss.data) if reduce else final_loss.data,
+            "loss": item(final_loss.data) if reduce else final_loss.data,
             "ntokens": sample["ntokens"],
             "sample_size": sample_size,
         }
@@ -223,7 +230,7 @@ class ForceWordsCriterion(FairseqCriterion):
         return agg_output
 
 
-@register_criterion("force_words_hinge")
+# @register_criterion("force_words_hinge")
 class ForceWordsHingeCriterion(FairseqCriterion):
     """This forces the model to generate a specific word or set of words."""
 

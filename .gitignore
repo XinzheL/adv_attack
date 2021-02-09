@@ -1,5 +1,17 @@
-# WMT data
-wmt*/
+# data
+data/
+
+# model
+checkpoints/
+
+# tmp
+tmp/
+
+# universal-triggers
+universal-triggers/
+
+# adversarial
+adversarial/
 
 # debug file
 debug.txt
