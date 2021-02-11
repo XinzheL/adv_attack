@@ -7,7 +7,7 @@ from allennlp.modules.seq2vec_encoders import PytorchSeq2VecWrapper, BertPooler
 from torch.nn import LSTM, Linear, CrossEntropyLoss
 from allennlp.training.metrics import CategoricalAccuracy
 from allennlp.data.token_indexers import SingleIdTokenIndexer
-from allennlp.data import Vocabulary
+from allennlp.data import Vocabulary, Instance
 
 
 # for training 
@@ -17,7 +17,7 @@ from allennlp.training.trainer import Trainer
 
 from torch import save, load
 import torch
-from typing import Dict, Union, Optional
+from typing import Dict, Union, Optional, List
 
 class SSTClassifier(Model):
     def __init__(self, word_embeddings, encoder, vocab):
@@ -59,8 +59,8 @@ class BertForClassification(Model):
         tokens:Dict[str, Dict[str, torch.Tensor]], \
         label: torch.IntTensor = None) -> Dict[str, torch.Tensor]:
         # indexer logic: e.g. the length of: "[CLS] A B C [SEP] [CLS] D E F [SEP]" .
-        token_ids = tokens['tokens']['tokens'] # shape: (B, T, C)
-        mask = get_text_field_mask(tokens) # shape: (B, T)
+        token_ids = tokens['tokens']['token_ids'] # shape: (B, T)
+        mask = tokens['tokens']['mask'] #get_text_field_mask(tokens) # shape: (B, T)
         embeddings = self.pretrained_embeddings.forward(token_ids=token_ids, mask=mask) # shape: (B, T, C)
         encoder_out = self.encoder(embeddings, mask=mask) # shape: (B, C) for [CLS]
        
@@ -93,10 +93,37 @@ def train_sst_model(output_dir, READER_TYPE='pretrained', \
     if Model_TYPE == "pretrained":
 
         # 2. token embedding
-        #vocab = Vocabulary.empty()
-        vocab = Vocabulary.from_instances(dev_data) # TODO: just construct namespace for labels fields 
-        reader._token_indexers['tokens']._add_encoding_to_vocabulary_if_needed(vocab)
+        # Problem: in huggingface, tokenizer is reponsible for tokenization and indexing which,
+        #   in AllenNLP is functions of Vocabulary, Indexer and Tokenizer 
+        # Soultion 1 : As normal steps in AllenNLP
+        # extract Vocabulary from huggingface tokenizer with newly `get_vocab()` API and may still
+        # use `SingleIdIndexer` instead of newly-added `PretrainedTransformerIndexer` shown below
+        # Solution 2: relying on huggingface procedure 
+        # (in AllenNLP, it has already induced `PretrainedTransformerIndexer` to do the thing 
+        #  where `tokens_to_indices` independent of Vocab)
+        # REMIND: `TextField.index()` use `Indexer.tokens_to_indices`, so I COULD just  ignore 
+        #   extract vocab for AllenNLP vocab tokens namespace? 
+
+        # Question: When TextField and LabelField index work? 
+        # Answer: Handled in `DataLoader.iter_instances()` <- `DataLoader.iter()` 
+        #   called by `Trainer._train_epoch()`
+       
+        # Here I construct vocab for two reasons:
+        # 1. for trainer API
+        # 2. for indexing label field in Instance
+        
+        # here, just construct namespace for labels fields 
+        # TODO: Deprecate the use of LabelField and directly use label tensor 
+        #   for forward and backward in Model
+        vocab = Vocabulary.empty()
+        from allennlp.data.fields import LabelField
+        tmp_instances = [Instance(fields={'labels': LabelField('0', skip_indexing=False)}), \
+            Instance(fields={'labels': LabelField('1', skip_indexing=False)})]
+        vocab = Vocabulary.from_instances(tmp_instances) 
+        # not sure the original idea using tags namespace in vocab, I choose ignoring it 
+        #reader._token_indexers['tokens']._add_encoding_to_vocabulary_if_needed(vocab) 
         token_embedding = PretrainedTransformerEmbedder(model_name=pretrained_model)
+
         # 3. seq2vec encoder
         encoder = BertPooler(pretrained_model=pretrained_model)
 
@@ -121,11 +148,9 @@ def train_sst_model(output_dir, READER_TYPE='pretrained', \
                                         embedding_dim=word_embedding_dim,
                                         weight=weight,
                                         trainable=False)
-            from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
-            word_embeddings = BasicTextFieldEmbedder({"tokens": token_embedding})
-
-            
-        
+        from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
+        word_embeddings = BasicTextFieldEmbedder({"tokens": token_embedding})
+         
         # 3. seq2vec encoder
         if Model_TYPE == 'lstm':
             encoder = PytorchSeq2VecWrapper(LSTM(word_embedding_dim,
@@ -140,18 +165,19 @@ def train_sst_model(output_dir, READER_TYPE='pretrained', \
     # 5. train model from scratch and save its weights
     
     
-    from .allennlp_data import AllennlpDataset
-    train_data = AllennlpDataset(train_data, vocab)
-    dev_data = AllennlpDataset(dev_data, vocab)
+    # from .allennlp_data import AllennlpDataset
+    # train_data = AllennlpDataset(train_data, vocab)
+    # dev_data = AllennlpDataset(dev_data, vocab)
     # This is the allennlp-specific functionality in the Dataset object;
     # we need to be able convert strings in the data to integers, and this
     # is how we do it.
-    train_data.index_with(vocab)
-    dev_data.index_with(vocab)
     
     from allennlp.data.data_loaders import DataLoader
-    train_loader, dev_loader = build_data_loaders(train_data, dev_data)
+    train_loader, dev_loader = build_data_loaders(list(train_data), list(dev_data), vocab)
+    
+
     trainer = build_trainer(model, model_path, train_loader, dev_loader)
+    trainer.train()
 
     with open(model_path, 'wb') as f:
         save(model.state_dict(), f)
@@ -159,18 +185,20 @@ def train_sst_model(output_dir, READER_TYPE='pretrained', \
     
 import allennlp
 from typing import Tuple
-from allennlp.data.data_loaders import DataLoader
+from allennlp.data.data_loaders import DataLoader, SimpleDataLoader
 # The other `build_*` methods are things we've seen before, so they are
 # in the setup section above.
 def build_data_loaders(
-    train_data: torch.utils.data.Dataset,
-    dev_data: torch.utils.data.Dataset,
+    train_data: List[Instance],
+    dev_data: List[Instance],
+    vocab: Vocabulary
+    bsz: int = 64
 ) -> Tuple[allennlp.data.DataLoader, allennlp.data.DataLoader]:
     # Note that DataLoader is imported from allennlp above, *not* torch.
     # We need to get the allennlp-specific collate function, which is
     # what actually does indexing and batching.
-    train_loader = DataLoader(train_data, batch_size=8, shuffle=True)
-    dev_loader = DataLoader(dev_data, batch_size=8, shuffle=False)
+    train_loader = SimpleDataLoader(train_data, batch_size=bsz, shuffle=True, vocab=vocab)
+    dev_loader = SimpleDataLoader(dev_data, batch_size=bsz, shuffle=False, vocab=vocab)
     return train_loader, dev_loader
 
 def build_trainer(

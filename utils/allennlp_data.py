@@ -50,8 +50,9 @@ def load_sst_data(split, READER_TYPE=None, pretrained_model = 'bert-base-uncased
     file_path = f'https://s3-us-west-2.amazonaws.com/allennlp/datasets/sst/{split}.txt'
     
     if READER_TYPE == 'pretrained':
-        tokenizer = PretrainedTransformerTokenizer(model_name=pretrained_model, add_special_tokens=False)
-        indexer = PretrainedTransformerIndexer(model_name=pretrained_model) 
+        #tokenizer = PretrainedTransformerTokenizer(model_name=pretrained_model, add_special_tokens=False)
+        indexer = PretrainedTransformerIndexer(model_name=pretrained_model,) 
+        tokenizer = indexer._allennlp_tokenizer
         reader = StanfordSentimentTreeBankDatasetReader(granularity="2-class", tokenizer=tokenizer, token_indexers={"tokens": indexer})
     else: # READER_TYPE is None:
         indexer = SingleIdTokenIndexer(lowercase_tokens=True) # word tokenizer
