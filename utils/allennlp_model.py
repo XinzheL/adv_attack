@@ -104,13 +104,20 @@ def train_sst_model(output_dir, READER_TYPE='pretrained', \
         # REMIND: `TextField.index()` use `Indexer.tokens_to_indices`, so I COULD just  ignore 
         #   extract vocab for AllenNLP vocab tokens namespace? 
 
-        # Question: When TextField and LabelField index work? 
+        # Both indexing and adding special tokens are using huggingface tokenizer 
+        # but at difference times. See Q1 and Q2.
+
+        # Question 1: When to index TextField and LabelField? 
         # Answer: Handled in `DataLoader.iter_instances()` <- `DataLoader.iter()` 
         #   called by `Trainer._train_epoch()`
-       
+        #   for `TextField.index(vocab)`, see `PretrainedTransformerIndexer._extract_token_and_type_ids()` 
+        #   which indeed uses huggingface tokenizer
         # Here I construct vocab for two reasons:
         # 1. for trainer API
         # 2. for indexing label field in Instance
+
+        # Question 2: When special tokens are added?
+        # Answer: During construction of instance  in `StanfordSentimentTreeBankDataReader.read()`
         
         # here, just construct namespace for labels fields 
         # TODO: Deprecate the use of LabelField and directly use label tensor 
@@ -191,7 +198,7 @@ from allennlp.data.data_loaders import DataLoader, SimpleDataLoader
 def build_data_loaders(
     train_data: List[Instance],
     dev_data: List[Instance],
-    vocab: Vocabulary
+    vocab: Vocabulary,
     bsz: int = 64
 ) -> Tuple[allennlp.data.DataLoader, allennlp.data.DataLoader]:
     # Note that DataLoader is imported from allennlp above, *not* torch.
