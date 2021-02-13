@@ -49,11 +49,12 @@ class BertForClassification(Model):
     def __init__(self, vocab: Vocabulary, pretrained_embeddings, encoder):
         super().__init__(vocab)
         self.pretrained_embeddings = pretrained_embeddings
-        self.encoder = encoder
+        self.encoder = encoder 
         self.linear = Linear(in_features=encoder.get_output_dim(),
                                       out_features=vocab.get_vocab_size('labels'))
         self.accuracy = CategoricalAccuracy()
         self.loss_function = CrossEntropyLoss()
+
 
     def forward(self, \
         tokens:Dict[str, Dict[str, torch.Tensor]], \
@@ -129,10 +130,10 @@ def train_sst_model(output_dir, READER_TYPE='pretrained', \
         vocab = Vocabulary.from_instances(tmp_instances) 
         # not sure the original idea using tags namespace in vocab, I choose ignoring it 
         #reader._token_indexers['tokens']._add_encoding_to_vocabulary_if_needed(vocab) 
-        token_embedding = PretrainedTransformerEmbedder(model_name=pretrained_model)
+        token_embedding = PretrainedTransformerEmbedder(model_name=pretrained_model, train_parameters=True)
 
         # 3. seq2vec encoder
-        encoder = BertPooler(pretrained_model=pretrained_model)
+        encoder = BertPooler(pretrained_model=pretrained_model, dropout=0.1, requires_grad=True)
 
         # 4. construct model
         model = BertForClassification(vocab, token_embedding, encoder)
@@ -180,10 +181,10 @@ def train_sst_model(output_dir, READER_TYPE='pretrained', \
     # is how we do it.
     
     from allennlp.data.data_loaders import DataLoader
-    train_loader, dev_loader = build_data_loaders(list(train_data), list(dev_data), vocab)
+    train_loader, dev_loader = build_data_loaders(list(train_data), list(dev_data), vocab, bsz=32)
     
 
-    trainer = build_trainer(model, output_dir, train_loader, dev_loader)
+    trainer = build_trainer(model, output_dir, train_loader, dev_loader, num_epochs=3)
     trainer.train()
 
     with open(model_path, 'wb') as f:
@@ -212,22 +213,33 @@ def build_trainer(
     model: Model,
     serialization_dir: str,
     train_loader: DataLoader,
-    dev_loader: DataLoader
+    dev_loader: DataLoader,
+    num_epochs: int = 3
 ) -> Trainer:
     from allennlp.training.trainer import GradientDescentTrainer
+    from allennlp.training.learning_rate_schedulers import LearningRateScheduler
     from allennlp.training.optimizers import AdamOptimizer
-    parameters = [
-        [n, p]
-        for n, p in model.named_parameters() if p.requires_grad
-    ]
-    optimizer = AdamOptimizer(parameters)
+    from transformers import AdamW
+
+    # parameters = [
+    #     [n, p]
+    #     for n, p in model.named_parameters() if p.requires_grad
+    # ]
+    # optimizer = AdamOptimizer(parameters)
+    optimizer = AdamW(model.parameters(),
+                      lr=5e-5,    # Default learning rate
+                      eps=1e-8    # Default epsilon value
+                      )
+    # scheduler = LearningRateScheduler()
+
     trainer = GradientDescentTrainer(
         model=model,
         serialization_dir=serialization_dir,
         data_loader=train_loader,
         validation_data_loader=dev_loader,
-        num_epochs=5,
+        num_epochs=num_epochs,
         optimizer=optimizer,
+        learning_rate_scheduler=None
     )
     return trainer
 

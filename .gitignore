@@ -4,6 +4,9 @@ data/
 # model
 checkpoints/
 
+# output
+output/
+
 # tmp
 tmp/
 
