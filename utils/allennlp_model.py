@@ -183,7 +183,7 @@ def train_sst_model(output_dir, READER_TYPE='pretrained', \
     train_loader, dev_loader = build_data_loaders(list(train_data), list(dev_data), vocab)
     
 
-    trainer = build_trainer(model, model_path, train_loader, dev_loader)
+    trainer = build_trainer(model, output_dir, train_loader, dev_loader)
     trainer.train()
 
     with open(model_path, 'wb') as f:

@@ -1,5 +1,5 @@
 from utils.allennlp_model import train_sst_model
-train_sst_model(output_dir="output")
+train_sst_model(output_dir="output/")
 
 from utils.allennlp_data import load_sst_data
 from utils.allennlp_model import load_sst_model
