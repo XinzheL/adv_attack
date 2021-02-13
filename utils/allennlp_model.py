@@ -2,6 +2,7 @@
 from allennlp.models import Model
 from allennlp.nn.util import get_text_field_mask
 from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
+from allennlp.modules.token_embedders.pretrained_transformer_embedder import PretrainedTransformerEmbedder
 from allennlp.modules.token_embedders import Embedding
 from allennlp.modules.seq2vec_encoders import PytorchSeq2VecWrapper, BertPooler
 from torch.nn import LSTM, Linear, CrossEntropyLoss
@@ -60,9 +61,14 @@ class BertForClassification(Model):
         tokens:Dict[str, Dict[str, torch.Tensor]], \
         label: torch.IntTensor = None) -> Dict[str, torch.Tensor]:
         # indexer logic: e.g. the length of: "[CLS] A B C [SEP] [CLS] D E F [SEP]" .
-        token_ids = tokens['tokens']['token_ids'] # shape: (B, T)
+        # Option 1: use `TextFieldEmbedder`
+        embeddings = self.pretrained_embeddings(tokens)
         mask = tokens['tokens']['mask'] #get_text_field_mask(tokens) # shape: (B, T)
-        embeddings = self.pretrained_embeddings.forward(token_ids=token_ids, mask=mask) # shape: (B, T, C)
+
+        # Option 2: Just use `TokenEmbedder`
+        # token_ids = tokens['tokens']['token_ids'] # shape: (B, T)
+        # embeddings = self.pretrained_embeddings.forward(token_ids=token_ids, mask=mask) # shape: (B, T, C)
+        
         encoder_out = self.encoder(embeddings, mask=mask) # shape: (B, C) for [CLS]
        
         logits = self.linear(encoder_out) # shape: (B, 2)
@@ -81,7 +87,7 @@ def train_sst_model(output_dir, READER_TYPE='pretrained', \
     EMBEDDING_TYPE = None,  \
     pretrained_model = 'bert-base-uncased'):
     from .allennlp_data import load_sst_data
-    from allennlp.modules.token_embedders.pretrained_transformer_embedder import PretrainedTransformerEmbedder
+    
     
     # define output path
     model_path = output_dir + "model.th"
@@ -136,7 +142,8 @@ def train_sst_model(output_dir, READER_TYPE='pretrained', \
         encoder = BertPooler(pretrained_model=pretrained_model, dropout=0.1, requires_grad=True)
 
         # 4. construct model
-        model = BertForClassification(vocab, token_embedding, encoder)
+        
+        model = BertForClassification(vocab, BasicTextFieldEmbedder({"tokens": token_embedding}), encoder)
         model.cuda()
     else:
         # 2. token embedding
@@ -156,7 +163,7 @@ def train_sst_model(output_dir, READER_TYPE='pretrained', \
                                         embedding_dim=word_embedding_dim,
                                         weight=weight,
                                         trainable=False)
-        from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
+        
         word_embeddings = BasicTextFieldEmbedder({"tokens": token_embedding})
          
         # 3. seq2vec encoder
@@ -244,22 +251,35 @@ def build_trainer(
     return trainer
 
 
-def load_sst_model(file_dir, EMBEDDING_TYPE = 'w2v'):
+def load_sst_model(file_dir, model_path="model.th", vocab_path='vocab', Model_TYPE='pretrained', pretrained_model='bert-base-uncased'):
     # load vocab and model
     from allennlp.data.vocabulary import Vocabulary
     
-    vocab_path = file_dir + EMBEDDING_TYPE + "_" + "vocab"
+    model_path = file_dir + model_path
+    vocab_path = file_dir + vocab_path
+    
     vocab = Vocabulary.from_files(vocab_path)
-    vocab_size = vocab.get_vocab_size('tokens')
+    
 
-    model_path = file_dir + EMBEDDING_TYPE + "_" + "model.th"
-    word_embedding_dim = 300
-    word_embeddings = BasicTextFieldEmbedder({"tokens": Embedding(num_embeddings=vocab_size, embedding_dim=word_embedding_dim)})
-    encoder = PytorchSeq2VecWrapper(LSTM(word_embedding_dim,
-                                                    hidden_size=512,
-                                                    num_layers=2,
-                                                    batch_first=True))
-    model = SSTClassifier(word_embeddings, encoder, vocab)
+    if Model_TYPE == "pretrained":
+        
+        # embedding
+        token_embedding = PretrainedTransformerEmbedder(model_name=pretrained_model, train_parameters=True)
+        # encoder
+        encoder = BertPooler(pretrained_model=pretrained_model, dropout=0.1, requires_grad=True)
+        # construct model
+        model = BertForClassification(vocab, BasicTextFieldEmbedder({"tokens": token_embedding}), encoder)
+        model.cuda()
+    else:
+        word_embedding_dim = 300
+        vocab_size = vocab.get_vocab_size('tokens')
+        word_embeddings = BasicTextFieldEmbedder({"tokens": Embedding(num_embeddings=vocab_size, embedding_dim=word_embedding_dim)})
+        encoder = PytorchSeq2VecWrapper(LSTM(word_embedding_dim,
+                                                        hidden_size=512,
+                                                        num_layers=2,
+                                                        batch_first=True))
+        model = SSTClassifier(word_embeddings, encoder, vocab)
+
     with open(model_path, 'rb') as f:
         model.load_state_dict(load(f))
     model.train().cuda() # rnn cannot do backwards in train mode
@@ -281,6 +301,7 @@ def get_grad_for_emb(model, batch):
     batch : see output of `allennlp_data.collate_fn`
     """
     from allennlp.modules.text_field_embedders import TextFieldEmbedder
+    
     
     extracted_grads = []
 

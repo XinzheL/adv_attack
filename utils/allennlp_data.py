@@ -37,7 +37,7 @@ def collate_fn(batch):
     return batch.as_tensor_dict(batch.get_padding_lengths())
 
             
-def load_sst_data(split, READER_TYPE=None, pretrained_model = 'bert-base-uncased'):
+def load_sst_data(split, READER_TYPE='None', pretrained_model = 'bert-base-uncased'):
     
 
     from allennlp_models.classification.dataset_readers.stanford_sentiment_tree_bank import StanfordSentimentTreeBankDatasetReader

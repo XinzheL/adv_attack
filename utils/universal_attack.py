@@ -91,7 +91,8 @@ class UniversalAttack(Hotflip):
         grad_input_field: str = "grad_input_1",
         ignore_tokens: List[str] = None,
         target: JsonDict = None,
-        num_epoch=5
+        num_epoch=5,
+        vocab_namespace='tokens'
         ) : # -> JsonDict
         if self.embedding_matrix is None:
             self.initialize()
@@ -151,13 +152,13 @@ class UniversalAttack(Hotflip):
                 new_trigger_tokens = [None] * self.num_trigger_tokens
                 # pass the gradients to a particular attack to generate substitute token for each token.
                 for index_of_token_to_flip in range(self.num_trigger_tokens):
-                    original_id_of_token_to_flip = self.vocab.get_token_index(str(self.trigger_tokens[index_of_token_to_flip]))
+                    original_id_of_token_to_flip = self.vocab.get_token_index(str(self.trigger_tokens[index_of_token_to_flip]), namespace=vocab_namespace)
                     # Get new token using taylor approximation.
                     trigger_indexed_token = self._first_order_taylor(
                         averaged_grad[index_of_token_to_flip, :], 
                         torch.from_numpy(numpy.array(original_id_of_token_to_flip)), sign
                     )
-                    token_txt = self.vocab.get_token_from_index(trigger_indexed_token)
+                    token_txt = self.vocab.get_token_from_index(trigger_indexed_token, namespace=vocab_namespace)
                     new_trigger_tokens[index_of_token_to_flip] = Token(token_txt)
                 log_trigger_tokens.append(self.trigger_tokens)
                 self.trigger_tokens = new_trigger_tokens
