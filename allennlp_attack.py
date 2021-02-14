@@ -10,10 +10,10 @@ from allennlp.interpret.attackers import Hotflip
 from utils.universal_attack import UniversalAttack
 
 
-CHOOSE_MODEL = 'lstm_w2v' # 'pretrained_bert'
+CHOOSE_MODEL = 'lstm_w2v' # 'finetuned_bert'
 
 # load data and model
-if CHOOSE_MODEL == 'pretrained_bert':
+if CHOOSE_MODEL == 'finetuned_bert':
     datareader, data_generator = load_sst_data('dev', READER_TYPE='pretrained', pretrained_model = 'bert-base-uncased')
     vocab, model = load_sst_model("output/",  Model_TYPE='pretrained')
 
@@ -62,7 +62,7 @@ result_df = pd.DataFrame({"accuracy": [ele for lst in metrics_lst for ele in lst
     "iteration": range(len([ele for lst in loss_lst for ele in lst]))})
 
 # result_long_df = pd.melt(result_df , ['iteration'])
-result_df.to_csv('bert_result.csv')
+result_df.to_csv(f'result_data/{CHOOSE_MODEL}.csv')
 
 
 
