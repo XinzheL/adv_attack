@@ -92,7 +92,8 @@ class UniversalAttack(Hotflip):
         ignore_tokens: List[str] = None,
         target: JsonDict = None,
         num_epoch=5,
-        vocab_namespace='tokens'
+        vocab_namespace='tokens',
+        label_filter:int = 1
         ) : # -> JsonDict
         if self.embedding_matrix is None:
             self.initialize()
@@ -104,7 +105,7 @@ class UniversalAttack(Hotflip):
         
         # label_filter 1 = "0" = neg
         # so neg -> pos
-        targeted_instances = self.filter_instances(instances, label_filter=1)
+        targeted_instances = self.filter_instances(instances, label_filter=label_filter)
 
 
         # batches with size: universal_perturb_batch_size for the attacks.

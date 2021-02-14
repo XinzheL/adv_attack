@@ -10,7 +10,9 @@ from allennlp.interpret.attackers import Hotflip
 from utils.universal_attack import UniversalAttack
 
 
-CHOOSE_MODEL = 'lstm_w2v' # 'finetuned_bert'
+CHOOSE_MODEL = 'lstm_w2v' # 'finetuned_bert' #
+label_filter = 0
+
 
 # load data and model
 if CHOOSE_MODEL == 'finetuned_bert':
@@ -43,7 +45,7 @@ def non_target_attack(predictor, instances):
         
 def universal_attack(predictor, instances, vocab_namespace='tokens'):
     universal = UniversalAttack(predictor)
-    loss_lst, metrics_lst, log_trigger_tokens = universal.attack_instances(instances, num_epoch=4, vocab_namespace=vocab_namespace)
+    loss_lst, metrics_lst, log_trigger_tokens = universal.attack_instances(instances, num_epoch=4, vocab_namespace=vocab_namespace, label_filter=label_filter)
     return loss_lst, metrics_lst, log_trigger_tokens
 
 
@@ -62,7 +64,7 @@ result_df = pd.DataFrame({"accuracy": [ele for lst in metrics_lst for ele in lst
     "iteration": range(len([ele for lst in loss_lst for ele in lst]))})
 
 # result_long_df = pd.melt(result_df , ['iteration'])
-result_df.to_csv(f'result_data/{CHOOSE_MODEL}.csv')
+result_df.to_csv(f'result_data/{CHOOSE_MODEL}_1.csv')
 
 
 
