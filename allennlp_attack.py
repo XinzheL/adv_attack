@@ -10,11 +10,19 @@ from allennlp.interpret.attackers import Hotflip
 from utils.universal_attack import UniversalAttack
 
 
-
+CHOOSE_MODEL = 'lstm_w2v' # 'pretrained_bert'
 
 # load data and model
-datareader, data_generator = load_sst_data('dev', READER_TYPE='pretrained', pretrained_model = 'bert-base-uncased')
-vocab, model = load_sst_model("output/" )
+if CHOOSE_MODEL == 'pretrained_bert':
+    datareader, data_generator = load_sst_data('dev', READER_TYPE='pretrained', pretrained_model = 'bert-base-uncased')
+    vocab, model = load_sst_model("output/",  Model_TYPE='pretrained')
+
+    vocab_namespace='tags'
+elif CHOOSE_MODEL == 'lstm_w2v':
+    datareader, data_generator = load_sst_data('dev', READER_TYPE=None)
+    vocab, model = load_sst_model("checkpoints/sst/lstm_w2v/",  Model_TYPE=None)
+
+    vocab_namespace='tokens'
 
 # predictor
 predictor = AttackPredictorForBiClassification(model, datareader)
@@ -41,11 +49,12 @@ def universal_attack(predictor, instances, vocab_namespace='tokens'):
 
 instances = list(data_generator)
 # non_target_attack(predictor, instances)
-loss_lst, metrics_lst, log_trigger_tokens = universal_attack(predictor, instances, 'tags')
+loss_lst, metrics_lst, log_trigger_tokens = universal_attack(predictor, instances, vocab_namespace=vocab_namespace)
 triggers = []
 for t in log_trigger_tokens:
     triggers.append(str(t[0]) + '_' + str(t[1]) + '_' + str(t[2]))
 
+# save the result
 import pandas as pd
 result_df = pd.DataFrame({"accuracy": [ele for lst in metrics_lst for ele in lst], \
     "loss":  [ele for lst in loss_lst for ele in lst], \
