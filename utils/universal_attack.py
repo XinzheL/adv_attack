@@ -63,9 +63,14 @@ class UniversalAttack(Hotflip):
 
     @classmethod
     def prepend_batch(cls, instances, trigger_tokens=None, vocab=None):
-
-        for instance in instances:
-            instance.fields['tokens'].tokens = trigger_tokens + instance.fields['tokens'].tokens
+        
+        for instance in instances: 
+            if str(instance.fields['tokens'].tokens[0]) == '[CLS]':
+                instance.fields['tokens'].tokens = [instance.fields['tokens'].tokens[0]] + \
+                    trigger_tokens + \
+                    instance.fields['tokens'].tokens[1:]
+            else:
+                instance.fields['tokens'].tokens = trigger_tokens + instance.fields['tokens'].tokens
             instance.fields['tokens'].index(vocab)
         
 

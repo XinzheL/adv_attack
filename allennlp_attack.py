@@ -11,12 +11,12 @@ from utils.universal_attack import UniversalAttack
 MODEL_TYPE=  'finetuned_bert'
 READER_TYPE='pretrained' # None for lstm
 pretrained_model = 'bert-base-uncased'
-label_filter = 0
+label_filter = 1
 EMBEDDING_TYPE = None
 
 from utils.allennlp_data import load_sst_data
-datareader, data_generator = load_sst_data('dev', \
-        READER_TYPE=READER_TYPE, \ 
+datareader, data_generator = load_sst_data('dev',\
+        READER_TYPE=READER_TYPE, \
         pretrained_model = pretrained_model)
     
 # load data and model
@@ -69,7 +69,7 @@ result_df = pd.DataFrame({"accuracy": [ele for lst in metrics_lst for ele in lst
 if MODEL_TYPE == "lstm_w2v" :
     result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(1-label_filter)}.csv')
 else: 
-    result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(label_filter)}.csv')
+    result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(label_filter)}_new.csv')
 
 
 

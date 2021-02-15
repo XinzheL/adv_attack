@@ -32,11 +32,12 @@ for label in label_ids:
     trigger_tokens = list(pd.read_csv(f"result_data/{MODEL_TYPE}_{str(label)}.csv")['triggers'])[-1].split('_')
     # TODO: change `trigger_tokens` to dict which contains all the classes so no need classmethods
     if noisy_train_data is None:
+        
         noisy_train_data = UniversalAttack.prepend_batch(
             UniversalAttack.filter_instances( \
                 list(train_data), label_filter=label, vocab=vocab
             ), \
-            trigger_tokens=trigger_tokens, \
+            trigger_tokens=[Token(token_txt) for token_txt in trigger_tokens], \
             vocab = vocab
         )
     else:
@@ -44,7 +45,7 @@ for label in label_ids:
             UniversalAttack.filter_instances( \
                 list(train_data), label_filter=label, vocab=vocab
             ), \
-            trigger_tokens=trigger_tokens, \
+            trigger_tokens=[Token(token_txt) for token_txt in trigger_tokens], \
             vocab = vocab
         )
 
