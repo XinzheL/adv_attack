@@ -69,7 +69,7 @@ result_df = pd.DataFrame({"accuracy": [ele for lst in metrics_lst for ele in lst
 if MODEL_TYPE == "lstm_w2v" :
     result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(1-label_filter)}.csv')
 else: 
-    result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(label_filter)}_new.csv')
+    result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(label_filter)}.csv')
 
 
 
