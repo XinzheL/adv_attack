@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pandas
 
 MODELS_TO_CHOOSE = ['lstm_w2v', 'finetuned_bert']
-label = "0"
+label = "1"
 
 fig = plt.figure(figsize=(16, 6), dpi=100)
 # axe for accuracy
