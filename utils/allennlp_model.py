@@ -85,7 +85,9 @@ class BertForClassification(Model):
 def train_sst_model(output_dir, train_data, dev_data, \
     MODEL_TYPE='finetuned_bert', \
     EMBEDDING_TYPE = None,  \
-    pretrained_model = 'bert-base-uncased'):
+    pretrained_model = 'bert-base-uncased',
+    num_epochs=3,
+    bsz = 32):
 
     # define output path
     model_path = output_dir + "model.th"
@@ -182,10 +184,9 @@ def train_sst_model(output_dir, train_data, dev_data, \
     # is how we do it.
     
     from allennlp.data.data_loaders import DataLoader
-    train_loader, dev_loader = build_data_loaders(list(train_data), list(dev_data), vocab, bsz=32)
+    train_loader, dev_loader = build_data_loaders(list(train_data), list(dev_data), vocab, bsz=bsz)
     
-
-    trainer = build_trainer(model, output_dir, train_loader, dev_loader, num_epochs=3)
+    trainer = build_trainer(model, output_dir, train_loader, dev_loader, num_epochs=num_epochs)
     trainer.train()
 
     with open(model_path, 'wb') as f:
@@ -221,6 +222,7 @@ def build_trainer(
     from allennlp.training.learning_rate_schedulers import LearningRateScheduler
     from allennlp.training.optimizers import AdamOptimizer
     from transformers import AdamW
+    from allennlp.training import TensorBoardCallback
 
     # parameters = [
     #     [n, p]
@@ -240,7 +242,9 @@ def build_trainer(
         validation_data_loader=dev_loader,
         num_epochs=num_epochs,
         optimizer=optimizer,
-        learning_rate_scheduler=None
+        learning_rate_scheduler=None,
+        patience=3,
+        callbacks=[TensorBoardCallback(serialization_dir)]
     )
     return trainer
 
