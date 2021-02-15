@@ -47,7 +47,7 @@ class UniversalAttack(Hotflip):
         a lot of memory when the vocab size is large.  This parameter puts a cap on the number of
         tokens to use, so the fake embedding matrix doesn't take as much memory.
     """
-    def __init__(self, predictor: Predictor, universal_perturb_batch_size: int = 128,
+    def __init__(self, predictor: Predictor=None, trigger_tokens =None, universal_perturb_batch_size: int = 128,
      num_trigger_tokens: int = 3,
      vocab_namespace: str = "tokens", max_tokens: int = 5000) -> None:
         super(UniversalAttack, self).__init__(predictor, vocab_namespace, max_tokens)
@@ -55,14 +55,18 @@ class UniversalAttack(Hotflip):
         # initialize triggers which are concatenated to the input
         self.num_trigger_tokens = num_trigger_tokens
         
-        self.trigger_tokens = []
-        for _ in range(self.num_trigger_tokens):
-            self.trigger_tokens.append(Token("the"))
+        
+        if trigger_tokens is None:
+            self.trigger_tokens = []
+            for _ in range(self.num_trigger_tokens):
+                self.trigger_tokens.append(Token("the"))
 
-    def prepend_batch(self, instances):
+    @classmethod
+    def prepend_batch(cls, instances, trigger_tokens=None, vocab=None):
+
         for instance in instances:
-            instance.fields['tokens'].tokens = self.trigger_tokens + instance.fields['tokens'].tokens
-            instance.fields['tokens'].index(self.vocab)
+            instance.fields['tokens'].tokens = trigger_tokens + instance.fields['tokens'].tokens
+            instance.fields['tokens'].index(vocab)
         
 
         # prepend triggers to the batch
@@ -72,14 +76,15 @@ class UniversalAttack(Hotflip):
         
         return instances
 
-    def filter_instances(self, instances, label_filter):
+    @classmethod
+    def filter_instances(cls, instances, label_filter, vocab=None):
         # find examples to a specific class, e.g. only positive 
         # or negative examples in binary classification,
         # Notice that here we needs `_label_id` corresponding to
         # index in the vocalbuary instead of raw label
         targeted_instances = []
         for instance in instances:
-            instance.index_fields(self.vocab)
+            instance.index_fields(vocab)
             if instance['label']._label_id == label_filter:
                 targeted_instances.append(instance)
         return targeted_instances
@@ -105,7 +110,7 @@ class UniversalAttack(Hotflip):
         
         # label_filter 1 = "0" = neg
         # so neg -> pos
-        targeted_instances = self.filter_instances(instances, label_filter=label_filter)
+        targeted_instances = self.filter_instances(instances, label_filter=label_filter, vocab=self.vocab)
 
 
         # batches with size: universal_perturb_batch_size for the attacks.
@@ -135,7 +140,7 @@ class UniversalAttack(Hotflip):
 
                 # set the labels equal to the target (backprop from the target class, not model prediction)
                 #batch_copy[0]['label'] = int(target_label) * torch.ones_like(batch_copy[0]['label']).cuda()
-                batch_prepended = self.prepend_batch(batch_copy)
+                batch_prepended = self.prepend_batch(batch_copy, trigger_tokens=self.trigger_tokens, vocab=self.vocab)
 
                 
                 
@@ -172,7 +177,7 @@ class UniversalAttack(Hotflip):
                 #                                                 trigger_token_ids,
                 #                                             cand_trigger_token_ids)
         
-                accuracy, loss = self.evaluate_instances( self.prepend_batch(targeted_instances))
+                accuracy, loss = self.evaluate_instances( self.prepend_batch(targeted_instances, trigger_tokens=self.trigger_tokens, vocab=self.vocab))
                 metrics_lst[epoch+1].append(accuracy)
                 loss_lst[epoch+1].append(loss)
         log_trigger_tokens.append(self.trigger_tokens)

@@ -1,8 +1,5 @@
-# from utils.allennlp_model import train_sst_model
-# train_sst_model(output_dir="output/")
-# exit()
 
-from utils.allennlp_data import load_sst_data
+
 from utils.allennlp_model import load_sst_model
 from utils.allennlp_predictor import AttackPredictorForBiClassification
 
@@ -10,20 +7,25 @@ from allennlp.interpret.attackers import Hotflip
 from utils.universal_attack import UniversalAttack
 
 
-CHOOSE_MODEL = 'lstm_w2v' # 'finetuned_bert' #
+
+MODEL_TYPE=  'finetuned_bert'
+READER_TYPE='pretrained' # None for lstm
+pretrained_model = 'bert-base-uncased'
 label_filter = 0
+EMBEDDING_TYPE = None
 
-
+from utils.allennlp_data import load_sst_data
+datareader, data_generator = load_sst_data('dev', \
+        READER_TYPE=READER_TYPE, \ 
+        pretrained_model = pretrained_model)
+    
 # load data and model
-if CHOOSE_MODEL == 'finetuned_bert':
-    datareader, data_generator = load_sst_data('dev', READER_TYPE='pretrained', pretrained_model = 'bert-base-uncased')
-    vocab, model = load_sst_model("output/",  Model_TYPE='pretrained')
-
+if MODEL_TYPE == 'finetuned_bert':
+    vocab, model = load_sst_model("output/",  MODEL_TYPE=MODEL_TYPE)
     vocab_namespace='tags'
-elif CHOOSE_MODEL == 'lstm_w2v':
-    datareader, data_generator = load_sst_data('dev', READER_TYPE=None)
-    vocab, model = load_sst_model("checkpoints/sst/lstm_w2v/",  Model_TYPE=None)
 
+elif MODEL_TYPE == 'lstm_w2v':
+    vocab, model = load_sst_model("checkpoints/sst/lstm_w2v/",  MODEL_TYPE=MODEL_TYPE)
     vocab_namespace='tokens'
 
 # predictor
@@ -64,7 +66,10 @@ result_df = pd.DataFrame({"accuracy": [ele for lst in metrics_lst for ele in lst
     "iteration": range(len([ele for lst in loss_lst for ele in lst]))})
 
 # result_long_df = pd.melt(result_df , ['iteration'])
-result_df.to_csv(f'result_data/{CHOOSE_MODEL}_1.csv')
+if MODEL_TYPE == "lstm_w2v" :
+    result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(1-label_filter)}.csv')
+else: 
+    result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(label_filter)}.csv')
 
 
 

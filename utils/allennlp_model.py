@@ -82,22 +82,16 @@ class BertForClassification(Model):
         return {'accuracy': self.accuracy.get_metric(reset)}
 
 
-def train_sst_model(output_dir, READER_TYPE='pretrained', \
-    Model_TYPE='pretrained',
+def train_sst_model(output_dir, train_data, dev_data, \
+    MODEL_TYPE='finetuned_bert', \
     EMBEDDING_TYPE = None,  \
     pretrained_model = 'bert-base-uncased'):
-    from .allennlp_data import load_sst_data
-    
-    
+
     # define output path
     model_path = output_dir + "model.th"
     vocab_path = output_dir +  "vocab"
-
-    # 1. read data
-    reader, train_data = load_sst_data('train', READER_TYPE=READER_TYPE, pretrained_model = pretrained_model)
-    _, dev_data = load_sst_data('dev', READER_TYPE=READER_TYPE, pretrained_model = pretrained_model)
     
-    if Model_TYPE == "pretrained":
+    if MODEL_TYPE == "finetuned_bert":
 
         # 2. token embedding
         # Problem: in huggingface, tokenizer is reponsible for tokenization and indexing which,
@@ -167,7 +161,7 @@ def train_sst_model(output_dir, READER_TYPE='pretrained', \
         word_embeddings = BasicTextFieldEmbedder({"tokens": token_embedding})
          
         # 3. seq2vec encoder
-        if Model_TYPE == 'lstm':
+        if MODEL_TYPE == 'lstm':
             encoder = PytorchSeq2VecWrapper(LSTM(word_embedding_dim,
                                                         hidden_size=512,
                                                         num_layers=2,
@@ -251,7 +245,11 @@ def build_trainer(
     return trainer
 
 
-def load_sst_model(file_dir, model_path="model.th", vocab_path='vocab', Model_TYPE='pretrained', pretrained_model='bert-base-uncased'):
+def load_sst_model(file_dir, \
+    model_path="model.th", \
+    vocab_path='vocab', \
+    MODEL_TYPE='finetuned_bert', \
+    pretrained_model='bert-base-uncased'):
     # load vocab and model
     from allennlp.data.vocabulary import Vocabulary
     
@@ -261,7 +259,7 @@ def load_sst_model(file_dir, model_path="model.th", vocab_path='vocab', Model_TY
     vocab = Vocabulary.from_files(vocab_path)
     
 
-    if Model_TYPE == "pretrained":
+    if MODEL_TYPE == "finetuned_bert":
         
         # embedding
         token_embedding = PretrainedTransformerEmbedder(model_name=pretrained_model, train_parameters=True)

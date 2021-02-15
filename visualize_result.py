@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import pandas
 
 MODELS_TO_CHOOSE = ['lstm_w2v', 'finetuned_bert']
+label = "0"
 
 fig = plt.figure(figsize=(16, 6), dpi=100)
 # axe for accuracy
@@ -17,7 +18,7 @@ COLORS_FOR_METRICS = ['teal', 'blue']
 COLORS_FOR_LOSS = ['red', 'yellow']
 ALPHAS = np.linspace(0.1, 1, num=len(MODELS_TO_CHOOSE), dtype=float)
 for i, MODEL in enumerate(MODELS_TO_CHOOSE):
-    result_df = pandas.read_csv(f'result_data/{MODEL}.csv')
+    result_df = pandas.read_csv(f'result_data/{MODEL}_{label}.csv')
     # eric_result_0 = [0.831,0.841, 0.121, 0.086] # neg(0) to pos(1): [the], [captivating, captivating, captivating] , [vividly, georgian-israeli, captivating]
     # eric_result_1 = [0.8761261261261262, 0.1373873873873874, 0.04504504504504504, 0.018018018018018018, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764] # pos(1) to neg(0)
     
@@ -28,5 +29,9 @@ for i, MODEL in enumerate(MODELS_TO_CHOOSE):
 
 ax1.legend(loc="lower right")
 ax2.legend(loc="upper right")
-plt.title('Universal Perturbation(neg->pos) with First-order Approximation')
+
+if label== "1":
+    plt.title('Universal Perturbation(pos->neg) with First-order Approximation')
+elif label == "0":
+    plt.title('Universal Perturbation(neg->pos) with First-order Approximation')
 plt.show()
