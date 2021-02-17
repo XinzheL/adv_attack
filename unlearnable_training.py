@@ -1,5 +1,6 @@
 
-TRAIN_TYPE = 'unlearnable'
+TRAIN_TYPE = 'error_min'#'error_max' # normal
+
 # load training data 
 READER_TYPE='pretrained'
 pretrained_model = 'bert-base-uncased'
@@ -27,7 +28,7 @@ if TRAIN_TYPE == 'normal':
         MODEL_TYPE=MODEL_TYPE, \
         EMBEDDING_TYPE = EMBEDDING_TYPE,  \
         pretrained_model = pretrained_model)
-elif TRAIN_TYPE == 'unlearnable':
+elif TRAIN_TYPE == 'error_max':
 
     from utils.universal_attack import UniversalAttack
     from allennlp.data.tokenizers import Token
@@ -64,4 +65,5 @@ elif TRAIN_TYPE == 'unlearnable':
 
 
 
-
+elif TRAIN_TYPE == 'error_min':
+    pass
