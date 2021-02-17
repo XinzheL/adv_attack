@@ -201,6 +201,18 @@ class UniversalAttack(Hotflip):
 
         return self.predictor._model.get_metrics()['accuracy'], float(outputs['loss'])
 
+    @classmethod
+    def evaluate_instances_cls(cls, targeted_instances, model, vocab, cuda_device=0):
+        model.get_metrics(reset=True)
+        batch_size = len(targeted_instances)
+        with torch.no_grad():
+            dataset = Batch(targeted_instances)
+            dataset.index_instances(vocab)
+            model_input = util.move_to_device(dataset.as_tensor_dict(), cuda_device)
+            outputs = model(**model_input)
+
+        return model.get_metrics()['accuracy'], float(outputs['loss'])
+
 
     def _first_order_taylor(self, grad: numpy.ndarray, token_idx: torch.Tensor, sign: int) -> int:
         """

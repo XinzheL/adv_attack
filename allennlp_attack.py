@@ -5,13 +5,22 @@ from utils.allennlp_predictor import AttackPredictorForBiClassification
 
 from allennlp.interpret.attackers import Hotflip
 from utils.universal_attack import UniversalAttack
+import os
+from copy import deepcopy
 
 label_filter = 1
+MODELS_DIR = 'checkpoints/bi_sst/'
+MODEL_TYPE = 'lstm'
 
-READER_TYPE= 'pretrained' # None # 
-pretrained_model = 'bert-base-uncased' # None # 
-MODEL_TYPE=  'finetuned_bert' # 'lstm' # 
-EMBEDDING_TYPE = None # "w2v" # 
+if MODEL_TYPE == 'finetuned_bert':
+    READER_TYPE= 'pretrained' # None # 
+    pretrained_model = 'bert-base-uncased' # None # 
+    EMBEDDING_TYPE = None # "w2v" # 
+
+elif MODEL_TYPE =='lstm' :
+    READER_TYPE= None 
+    pretrained_model = None 
+    EMBEDDING_TYPE = "w2v" 
 
 from utils.allennlp_data import load_sst_data
 datareader, dev_data = load_sst_data('dev',\
@@ -20,15 +29,16 @@ datareader, dev_data = load_sst_data('dev',\
 _, test_data = load_sst_data('test',\
         READER_TYPE=READER_TYPE, \
         pretrained_model = pretrained_model)
+
     
 # load data and model
-if MODEL_TYPE == 'finetuned_bert':
-    vocab, model = load_sst_model("checkpoints/bi_sst/bert/",  MODEL_TYPE=MODEL_TYPE)
-    vocab_namespace='tags'
+vocab, model = load_sst_model(f"{MODELS_DIR}{MODEL_TYPE}/",  MODEL_TYPE=MODEL_TYPE)
 
+if MODEL_TYPE == 'finetuned_bert':
+    vocab_namespace='tags'
 elif MODEL_TYPE == 'lstm' and EMBEDDING_TYPE == 'w2v':
-    vocab, model = load_sst_model("checkpoints/bi_sst/lstm/",  MODEL_TYPE=MODEL_TYPE)
     vocab_namespace='tokens'
+
 
 # predictor
 predictor = AttackPredictorForBiClassification(model, datareader)
@@ -56,16 +66,64 @@ def universal_attack(predictor, instances, test_data, vocab_namespace='tokens'):
 
 # non_target_attack(predictor, instances)
 loss_lst, metrics_lst, log_trigger_tokens = universal_attack(predictor, list(dev_data), test_data=list(test_data), vocab_namespace=vocab_namespace)
-triggers = []
-for t in log_trigger_tokens:
-    triggers.append(str(t[0]) + '_' + str(t[1]) + '_' + str(t[2]))
-
 # save the result
 import pandas as pd
 result_df = pd.DataFrame({"accuracy": [ele for lst in metrics_lst for ele in lst], \
     "loss":  [ele for lst in loss_lst for ele in lst], \
-    "triggers": triggers, \
     "iteration": range(len([ele for lst in loss_lst for ele in lst]))})
+
+# save triggers and their transferability (accuracy on other models)
+triggers = []
+accs = {}
+MODELS = {}
+for M in os.listdir(MODELS_DIR):
+    if M != MODEL_TYPE:
+        if M == 'finetuned_bert':
+            READER_TYPE= 'pretrained' # None # 
+            pretrained_model = 'bert-base-uncased' # None # 
+            EMBEDDING_TYPE = None # "w2v" # 
+
+        elif M =='lstm' :
+            READER_TYPE= None 
+            pretrained_model = None 
+            EMBEDDING_TYPE = "w2v" 
+
+        # Load Model
+        vocab, model = load_sst_model(f"{MODELS_DIR}{M}/",  MODEL_TYPE=M)
+
+        _, test_data = load_sst_data('test',\
+                                        READER_TYPE=READER_TYPE, \
+                                        pretrained_model = pretrained_model)
+
+        MODELS[M] = (deepcopy(model), deepcopy(vocab), deepcopy(list(test_data)))
+
+for t in log_trigger_tokens:
+    triggers.append(str(t[0]) + '_' + str(t[1]) + '_' + str(t[2]))
+
+    # evaluate the transferability of other models
+    #if t == log_trigger_tokens[-1]: # only evaluate on the last one
+    for M in MODELS.keys():
+        model, vocab, test_data = MODELS[M]
+        #Evaluate with test data appended by triggers
+        noisy_test_data = UniversalAttack.prepend_batch(
+            UniversalAttack.filter_instances( \
+                list(test_data), label_filter=label_filter, vocab=vocab
+            ), \
+            trigger_tokens=t, \
+            vocab = vocab
+        )
+
+        acc, _ = UniversalAttack.evaluate_instances_cls(noisy_test_data, model, vocab, cuda_device=0)
+        if M not in accs.keys():
+            accs[M] = [acc]
+        else:
+            accs[M].append(acc)
+            
+
+
+result_df['triggers'] = triggers
+for M in accs.keys():
+    result_df[f'{M}_accuracy'] = accs[M]
 
 # result_long_df = pd.melt(result_df , ['iteration'])
 if MODEL_TYPE == "lstm" :
