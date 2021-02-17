@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas
 
-MODELS_TO_CHOOSE = ['lstm_w2v', 'finetuned_bert']
+MODELS_TO_CHOOSE = ['lstm', 'finetuned_bert']
 label = "1"
 
 fig = plt.figure(figsize=(16, 6), dpi=100)
@@ -31,7 +31,7 @@ ax1.legend(loc="lower right")
 ax2.legend(loc="upper right")
 
 if label== "1":
-    plt.title('Universal Perturbation(pos->neg) with First-order Approximation')
+    plt.title('Positive Examples')
 elif label == "0":
-    plt.title('Universal Perturbation(neg->pos) with First-order Approximation')
+    plt.title('Negative Examples')
 plt.show()
