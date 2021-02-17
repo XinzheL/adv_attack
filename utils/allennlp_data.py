@@ -46,7 +46,7 @@ def load_sst_data(split, READER_TYPE='None', pretrained_model = 'bert-base-uncas
     from allennlp.data.tokenizers import PretrainedTransformerTokenizer
     
     # setup reader
-    assert split in ['dev', 'train']
+    assert split in ['dev', 'train', 'test']
     file_path = f'https://s3-us-west-2.amazonaws.com/allennlp/datasets/sst/{split}.txt'
     
     if READER_TYPE == 'pretrained':

@@ -1,11 +1,12 @@
 
-TRAIN_TYPE = 'error_min'#'error_max' # normal
+TRAIN_TYPE = 'normal' # 'error_min' # 'error_max' # 
+output_dir = "checkpoints/bi_sst/lstm/"
 
 # load training data 
-READER_TYPE='pretrained'
-pretrained_model = 'bert-base-uncased'
-MODEL_TYPE=  'finetuned_bert'
-EMBEDDING_TYPE = None
+READER_TYPE= None # 'pretrained' #
+pretrained_model = None # 'bert-base-uncased' #
+MODEL_TYPE=  'lstm' # 'finetuned_bert' #
+EMBEDDING_TYPE = "w2v" # None # 
 
 from allennlp.data.vocabulary import Vocabulary
 if READER_TYPE == 'pretrained':
@@ -24,10 +25,12 @@ _, dev_data = load_sst_data('dev', \
 from utils.allennlp_model import train_sst_model
 
 if TRAIN_TYPE == 'normal':
-    train_sst_model("output_orig/", train_data, dev_data, \
+    train_sst_model(output_dir, list(train_data), list(dev_data), \
         MODEL_TYPE=MODEL_TYPE, \
         EMBEDDING_TYPE = EMBEDDING_TYPE,  \
         pretrained_model = pretrained_model)
+        
+
 elif TRAIN_TYPE == 'error_max':
 
     from utils.universal_attack import UniversalAttack

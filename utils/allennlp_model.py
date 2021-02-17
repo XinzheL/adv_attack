@@ -19,6 +19,8 @@ from allennlp.training.trainer import Trainer
 from torch import save, load
 import torch
 from typing import Dict, Union, Optional, List
+from copy import deepcopy
+import os
 
 class SSTClassifier(Model):
     def __init__(self, word_embeddings, encoder, vocab):
@@ -89,9 +91,7 @@ def train_sst_model(output_dir, train_data, dev_data, \
     num_epochs=3,
     bsz = 32):
 
-    # define output path
-    model_path = output_dir + "model.th"
-    vocab_path = output_dir +  "vocab"
+    
     
     if MODEL_TYPE == "finetuned_bert":
 
@@ -145,6 +145,8 @@ def train_sst_model(output_dir, train_data, dev_data, \
         # 2. token embedding
         vocab = Vocabulary.from_instances(train_data)
         vocab_size = vocab.get_vocab_size('tokens')
+        vocab_path =  "vocab"
+        vocab.save_to_files(output_dir + vocab_path)
         word_embedding_dim = 300
         if EMBEDDING_TYPE is None:
             token_embedding = Embedding(num_embeddings=vocab_size, embedding_dim=word_embedding_dim)
@@ -171,6 +173,7 @@ def train_sst_model(output_dir, train_data, dev_data, \
             # 4. construct model
             model = SSTClassifier(word_embeddings, encoder, vocab)
             model.cuda()
+            
 
             
     # 5. train model from scratch and save its weights
@@ -186,12 +189,28 @@ def train_sst_model(output_dir, train_data, dev_data, \
     from allennlp.data.data_loaders import DataLoader
     train_loader, dev_loader = build_data_loaders(list(train_data), list(dev_data), vocab, bsz=bsz)
     
-    trainer = build_trainer(model, output_dir, train_loader, dev_loader, num_epochs=num_epochs)
+    # define optim
+    if MODEL_TYPE == "finetuned_bert":
+        from transformers import AdamW
+        optimizer = AdamW(model.parameters(),
+                        lr=5e-5,    # Default learning rate
+                        eps=1e-8    # Default epsilon value
+                        )
+    else:
+        from allennlp.training.optimizers import AdamOptimizer
+        parameters = [[n, p] for n, p in model.named_parameters() if p.requires_grad]
+        optimizer = AdamOptimizer(parameters)
+    # from allennlp.training.learning_rate_schedulers import LearningRateScheduler
+    # scheduler = LearningRateScheduler()
+
+    trainer = build_trainer(model, output_dir, train_loader, dev_loader, num_epochs=num_epochs, optimizer=optimizer)
     trainer.train()
 
-    with open(model_path, 'wb') as f:
-        save(model.state_dict(), f)
-    vocab.save_to_files(vocab_path)
+    # define output path
+    # model_path = "model.th"
+    # with open(model_path, 'wb') as f:
+    #     save(model.state_dict(), f)
+    
     
 import allennlp
 from typing import Tuple
@@ -216,24 +235,14 @@ def build_trainer(
     serialization_dir: str,
     train_loader: DataLoader,
     dev_loader: DataLoader,
-    num_epochs: int = 3
+    num_epochs: int = 3,
+    optimizer=None
+    
 ) -> Trainer:
     from allennlp.training.trainer import GradientDescentTrainer
-    from allennlp.training.learning_rate_schedulers import LearningRateScheduler
-    from allennlp.training.optimizers import AdamOptimizer
-    from transformers import AdamW
     from allennlp.training import TensorBoardCallback
 
-    # parameters = [
-    #     [n, p]
-    #     for n, p in model.named_parameters() if p.requires_grad
-    # ]
-    # optimizer = AdamOptimizer(parameters)
-    optimizer = AdamW(model.parameters(),
-                      lr=5e-5,    # Default learning rate
-                      eps=1e-8    # Default epsilon value
-                      )
-    # scheduler = LearningRateScheduler()
+    
 
     trainer = GradientDescentTrainer(
         model=model,
@@ -257,9 +266,8 @@ def load_sst_model(file_dir, \
     # load vocab and model
     from allennlp.data.vocabulary import Vocabulary
     
-    model_path = file_dir + model_path
-    vocab_path = file_dir + vocab_path
     
+    vocab_path = file_dir + vocab_path
     vocab = Vocabulary.from_files(vocab_path)
     
 
@@ -281,6 +289,13 @@ def load_sst_model(file_dir, \
                                                         num_layers=2,
                                                         batch_first=True))
         model = SSTClassifier(word_embeddings, encoder, vocab)
+
+    if os.path.isfile(file_dir + "model.th"):
+        model_path = file_dir + "model.th"
+    elif os.path.isfile(file_dir + "best.th"):
+        model_path = file_dir + "best.th"
+    else:
+        pass
 
     with open(model_path, 'rb') as f:
         model.load_state_dict(load(f))

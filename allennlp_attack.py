@@ -6,26 +6,28 @@ from utils.allennlp_predictor import AttackPredictorForBiClassification
 from allennlp.interpret.attackers import Hotflip
 from utils.universal_attack import UniversalAttack
 
-
-
-MODEL_TYPE=  'finetuned_bert'
-READER_TYPE='pretrained' # None for lstm
-pretrained_model = 'bert-base-uncased'
 label_filter = 1
-EMBEDDING_TYPE = None
+
+READER_TYPE= 'pretrained' # None # 
+pretrained_model = 'bert-base-uncased' # None # 
+MODEL_TYPE=  'finetuned_bert' # 'lstm' # 
+EMBEDDING_TYPE = None # "w2v" # 
 
 from utils.allennlp_data import load_sst_data
-datareader, data_generator = load_sst_data('dev',\
+datareader, dev_data = load_sst_data('dev',\
+        READER_TYPE=READER_TYPE, \
+        pretrained_model = pretrained_model)
+_, test_data = load_sst_data('test',\
         READER_TYPE=READER_TYPE, \
         pretrained_model = pretrained_model)
     
 # load data and model
 if MODEL_TYPE == 'finetuned_bert':
-    vocab, model = load_sst_model("output/",  MODEL_TYPE=MODEL_TYPE)
+    vocab, model = load_sst_model("checkpoints/bi_sst/bert/",  MODEL_TYPE=MODEL_TYPE)
     vocab_namespace='tags'
 
-elif MODEL_TYPE == 'lstm_w2v':
-    vocab, model = load_sst_model("checkpoints/sst/lstm_w2v/",  MODEL_TYPE=MODEL_TYPE)
+elif MODEL_TYPE == 'lstm' and EMBEDDING_TYPE == 'w2v':
+    vocab, model = load_sst_model("checkpoints/bi_sst/lstm/",  MODEL_TYPE=MODEL_TYPE)
     vocab_namespace='tokens'
 
 # predictor
@@ -45,15 +47,15 @@ def non_target_attack(predictor, instances):
         attack_output.append(hotflip.attack_from_json(instance.fields))
 
         
-def universal_attack(predictor, instances, vocab_namespace='tokens'):
+def universal_attack(predictor, instances, test_data, vocab_namespace='tokens'):
     universal = UniversalAttack(predictor)
-    loss_lst, metrics_lst, log_trigger_tokens = universal.attack_instances(instances, num_epoch=4, vocab_namespace=vocab_namespace, label_filter=label_filter)
+    loss_lst, metrics_lst, log_trigger_tokens = universal.attack_instances(instances, test_data=test_data, num_epoch=4, vocab_namespace=vocab_namespace, label_filter=label_filter)
     return loss_lst, metrics_lst, log_trigger_tokens
 
 
-instances = list(data_generator)
+
 # non_target_attack(predictor, instances)
-loss_lst, metrics_lst, log_trigger_tokens = universal_attack(predictor, instances, vocab_namespace=vocab_namespace)
+loss_lst, metrics_lst, log_trigger_tokens = universal_attack(predictor, list(dev_data), test_data=list(test_data), vocab_namespace=vocab_namespace)
 triggers = []
 for t in log_trigger_tokens:
     triggers.append(str(t[0]) + '_' + str(t[1]) + '_' + str(t[2]))
@@ -66,7 +68,7 @@ result_df = pd.DataFrame({"accuracy": [ele for lst in metrics_lst for ele in lst
     "iteration": range(len([ele for lst in loss_lst for ele in lst]))})
 
 # result_long_df = pd.melt(result_df , ['iteration'])
-if MODEL_TYPE == "lstm_w2v" :
+if MODEL_TYPE == "lstm" :
     result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(1-label_filter)}.csv')
 else: 
     result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(label_filter)}.csv')

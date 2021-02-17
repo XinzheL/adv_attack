@@ -97,6 +97,7 @@ class UniversalAttack(Hotflip):
     def attack_instances(
         self,
         instances: List[Instance],
+        test_data: List[Instance],
         input_field_to_attack: str = "tokens",
         grad_input_field: str = "grad_input_1",
         ignore_tokens: List[str] = None,
@@ -116,6 +117,7 @@ class UniversalAttack(Hotflip):
         # label_filter 1 = "0" = neg
         # so neg -> pos
         targeted_instances = self.filter_instances(instances, label_filter=label_filter, vocab=self.vocab)
+        targeted_test = self.filter_instances(test_data, label_filter=label_filter, vocab=self.vocab)
 
 
         # batches with size: universal_perturb_batch_size for the attacks.
@@ -127,7 +129,7 @@ class UniversalAttack(Hotflip):
         log_trigger_tokens = []
 
         # record orginal metrics and loss
-        accuracy, loss = self.evaluate_instances( targeted_instances)
+        accuracy, loss = self.evaluate_instances( targeted_test)
         metrics_lst[0] = [accuracy]
         loss_lst[0] = [loss]
 
@@ -182,7 +184,7 @@ class UniversalAttack(Hotflip):
                 #                                                 trigger_token_ids,
                 #                                             cand_trigger_token_ids)
         
-                accuracy, loss = self.evaluate_instances( self.prepend_batch(targeted_instances, trigger_tokens=self.trigger_tokens, vocab=self.vocab))
+                accuracy, loss = self.evaluate_instances( self.prepend_batch(targeted_test, trigger_tokens=self.trigger_tokens, vocab=self.vocab))
                 metrics_lst[epoch+1].append(accuracy)
                 loss_lst[epoch+1].append(loss)
         log_trigger_tokens.append(self.trigger_tokens)
