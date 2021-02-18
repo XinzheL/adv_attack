@@ -1,7 +1,7 @@
 
 ### USER INPUT 
 TRAIN_TYPE = 'error_min' # None # 'error_min' # 
-MODEL_TYPE = 'lstm' #'finetuned_bert' #
+MODEL_TYPE = 'finetuned_bert' #'lstm' #
 num_epochs=3
 bsz = 32
 ###

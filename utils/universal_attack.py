@@ -151,7 +151,7 @@ class UniversalAttack(Hotflip):
 
                 
                 
-                new_trigger_tokens = self.update_triggers(batch_prepended, self.predictor, self.vocab, self.trigger_tokens)
+                new_trigger_tokens = self.update_triggers(batch_prepended, self.predictor, self.vocab, self.trigger_tokens, sign)
                 log_trigger_tokens.append(self.trigger_tokens)
                 self.trigger_tokens = new_trigger_tokens
                     
@@ -171,13 +171,16 @@ class UniversalAttack(Hotflip):
 
     
 
-    def update_triggers(self, batch_prepended, predictor, vocab, trigger_tokens):
+    def update_triggers(self, batch_prepended, predictor, vocab, trigger_tokens, sign, grad_input_field: str = "grad_input_1", vocab_namespace='tokens',):
+        if self.embedding_matrix is None:
+            self.initialize()
+            
         num_trigger_tokens = len(trigger_tokens)
         # we got gradients for all positions but only use the first `self.num_trigger_tokens` positions
         # Also, if needed, we could record the metrics like accuracy during the forward pass
         
         grads, _ = predictor.get_gradients(batch_prepended)
-        grads = grads[self.grad_input_field] # [B, T, C]
+        grads = grads[grad_input_field] # [B, T, C]
 
 
         # average grad across batch size, result only makes sense for trigger tokens at the front
@@ -195,6 +198,7 @@ class UniversalAttack(Hotflip):
             )
             token_txt = vocab.get_token_from_index(trigger_indexed_token, namespace=vocab_namespace)
             new_trigger_tokens[index_of_token_to_flip] = Token(token_txt)
+        return new_trigger_tokens
 
     def evaluate_instances(self, targeted_instances):
         self.predictor._model.get_metrics(reset=True)

@@ -215,10 +215,15 @@ def train_sst_model(output_dir, train_data, dev_data, \
         train_loader, dev_loader = build_data_loaders(list(train_data), list(dev_data), vocab, bsz=bsz)
         trainer = build_trainer(model, output_dir, train_loader, dev_loader, num_epochs=num_epochs, optimizer=optimizer)
     elif TRAIN_TYPE == "error_min":
-        
-        train_loader = MySimpleDataLoader(train_data, batch_size=bsz, shuffle=False, vocab=vocab)
-        dev_loader = MySimpleDataLoader(dev_data, batch_size=bsz, shuffle=False, vocab=vocab)
-        trainer = build_error_min_unlearnable_trainer(model, output_dir, train_loader, vocab, dev_loader, num_epochs=num_epochs, optimizer=optimizer)
+        if MODEL_TYPE == 'finetuned_bert':
+            vocab_namespace='tags'
+        elif MODEL_TYPE == 'lstm' and EMBEDDING_TYPE == 'w2v':
+            vocab_namespace='tokens'
+        train_loader = MySimpleDataLoader(train_data, batch_size=bsz, shuffle=False, vocab=vocab, )
+        dev_loader = SimpleDataLoader(dev_data, batch_size=bsz, shuffle=False, vocab=vocab)
+        trainer = build_error_min_unlearnable_trainer(model, output_dir, train_loader,\
+            vocab, vocab_namespace, \
+            dev_loader, num_epochs=num_epochs, optimizer=optimizer, )
     
     trainer.train()
 
@@ -272,9 +277,11 @@ def build_error_min_unlearnable_trainer(
     serialization_dir: str,
     train_loader: allennlp.data.DataLoader,
     vocab,
+    vocab_namespace,
     dev_loader: allennlp.data.DataLoader,
     num_epochs: int = 3,
-    optimizer=None
+    optimizer=None,
+    
     
 ) -> Trainer:
     
@@ -285,6 +292,7 @@ def build_error_min_unlearnable_trainer(
         serialization_dir=serialization_dir,
         data_loader=train_loader,
         vocab=vocab,
+        vocab_namespace=vocab_namespace,
         validation_data_loader=dev_loader,
         num_epochs=num_epochs,
         optimizer=optimizer,

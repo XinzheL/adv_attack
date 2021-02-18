@@ -36,8 +36,11 @@ from allennlp.training.optimizers import Optimizer
 from allennlp.training.tensorboard_writer import TensorBoardWriter
 
 from .universal_attack import UniversalAttack
+from utils.allennlp_predictor import AttackPredictorForBiClassification
+
 
 from allennlp.data.data_loaders.data_loader import allennlp_collate
+from allennlp.data.dataset_readers import DatasetReader
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +51,7 @@ class ErrorMinUnlearnableTrainer(GradientDescentTrainer):
         optimizer: torch.optim.Optimizer,
         data_loader: DataLoader,
         vocab,
+        vocab_namespace,
         patience: Optional[int] = None,
         validation_metric: Union[str, List[str]] = "-loss",
         validation_data_loader: DataLoader = None,
@@ -83,6 +87,7 @@ class ErrorMinUnlearnableTrainer(GradientDescentTrainer):
         
         self.trigger_tokens_dict = {}
         self.vocab = vocab
+        self.vocab_namespace = vocab_namespace
         self.label_ids = [0, 1]
         for k in self.label_ids:
             self.trigger_tokens_dict[k] = deepcopy(trigger_tokens)
@@ -189,7 +194,7 @@ class ErrorMinUnlearnableTrainer(GradientDescentTrainer):
             for batch in batch_group:
 
                 ##### prepend trigger tokens
-                
+                batch_dict = {}
                 for label in self.label_ids:
                     noisy_batch.append(UniversalAttack.prepend_batch(
                             UniversalAttack.filter_instances( \
@@ -199,6 +204,8 @@ class ErrorMinUnlearnableTrainer(GradientDescentTrainer):
                             vocab = self.vocab
                         )
                     ) 
+                    batch_dict[label] = UniversalAttack.filter_instances( batch, label_filter=label, vocab=self.vocab)
+
                 for instance in batch:
                     instance.index_fields(self.vocab)
                 batch = allennlp_collate(batch)
@@ -228,7 +235,14 @@ class ErrorMinUnlearnableTrainer(GradientDescentTrainer):
                     loss.backward()
 
                 ##### Update Trigger Tokens
-                
+                # predictor
+                predictor = AttackPredictorForBiClassification(self._pytorch_model, DatasetReader())
+                universal = UniversalAttack(predictor)
+                for label in self.label_ids:
+                    if len(batch_dict[label]) > 0:
+                        self.trigger_tokens_dict[label] = universal.update_triggers( batch_dict[label],\
+                            predictor, self.vocab,  \
+                            self.trigger_tokens_dict[label], sign=1, vocab_namespace=self.vocab_namespace)
 
                 #####
 
