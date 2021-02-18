@@ -11,10 +11,19 @@ from allennlp.data.token_indexers import SingleIdTokenIndexer
 from allennlp.data import Vocabulary, Instance
 
 
+
 # for training 
+from allennlp.training.trainer import GradientDescentTrainer
+from allennlp.training import TensorBoardCallback
 from allennlp.modules.token_embedders.embedding import _read_pretrained_embeddings_file
 import torch.optim as optim
 from allennlp.training.trainer import Trainer
+from transformers import AdamW
+from allennlp.training.optimizers import AdamOptimizer
+import allennlp
+from typing import Tuple
+from allennlp.data.data_loaders import SimpleDataLoader
+from .allennlp_data import MySimpleDataLoader
 
 from torch import save, load
 import torch
@@ -89,7 +98,8 @@ def train_sst_model(output_dir, train_data, dev_data, \
     EMBEDDING_TYPE = None,  \
     pretrained_model = 'bert-base-uncased',
     num_epochs=3,
-    bsz = 32):
+    bsz = 32,
+    TRAIN_TYPE=None):
 
     
     
@@ -186,24 +196,30 @@ def train_sst_model(output_dir, train_data, dev_data, \
     # we need to be able convert strings in the data to integers, and this
     # is how we do it.
     
-    from allennlp.data.data_loaders import DataLoader
-    train_loader, dev_loader = build_data_loaders(list(train_data), list(dev_data), vocab, bsz=bsz)
+    
+    
     
     # define optim
     if MODEL_TYPE == "finetuned_bert":
-        from transformers import AdamW
         optimizer = AdamW(model.parameters(),
                         lr=5e-5,    # Default learning rate
                         eps=1e-8    # Default epsilon value
                         )
     else:
-        from allennlp.training.optimizers import AdamOptimizer
+        
         parameters = [[n, p] for n, p in model.named_parameters() if p.requires_grad]
         optimizer = AdamOptimizer(parameters)
     # from allennlp.training.learning_rate_schedulers import LearningRateScheduler
     # scheduler = LearningRateScheduler()
-
-    trainer = build_trainer(model, output_dir, train_loader, dev_loader, num_epochs=num_epochs, optimizer=optimizer)
+    if TRAIN_TYPE is None or TRAIN_TYPE == "error_max":
+        train_loader, dev_loader = build_data_loaders(list(train_data), list(dev_data), vocab, bsz=bsz)
+        trainer = build_trainer(model, output_dir, train_loader, dev_loader, num_epochs=num_epochs, optimizer=optimizer)
+    elif TRAIN_TYPE == "error_min":
+        
+        train_loader = MySimpleDataLoader(train_data, batch_size=bsz, shuffle=False, vocab=vocab)
+        dev_loader = MySimpleDataLoader(dev_data, batch_size=bsz, shuffle=False, vocab=vocab)
+        trainer = build_error_min_unlearnable_trainer(model, output_dir, train_loader, vocab, dev_loader, num_epochs=num_epochs, optimizer=optimizer)
+    
     trainer.train()
 
     # define output path
@@ -212,9 +228,7 @@ def train_sst_model(output_dir, train_data, dev_data, \
     #     save(model.state_dict(), f)
     
     
-import allennlp
-from typing import Tuple
-from allennlp.data.data_loaders import DataLoader, SimpleDataLoader
+
 # The other `build_*` methods are things we've seen before, so they are
 # in the setup section above.
 def build_data_loaders(
@@ -233,17 +247,13 @@ def build_data_loaders(
 def build_trainer(
     model: Model,
     serialization_dir: str,
-    train_loader: DataLoader,
-    dev_loader: DataLoader,
+    train_loader: allennlp.data.DataLoader,
+    dev_loader: allennlp.data.DataLoader,
     num_epochs: int = 3,
     optimizer=None
     
 ) -> Trainer:
-    from allennlp.training.trainer import GradientDescentTrainer
-    from allennlp.training import TensorBoardCallback
-
     
-
     trainer = GradientDescentTrainer(
         model=model,
         serialization_dir=serialization_dir,
@@ -256,6 +266,35 @@ def build_trainer(
         callbacks=[TensorBoardCallback(serialization_dir)]
     )
     return trainer
+
+def build_error_min_unlearnable_trainer(
+    model: Model,
+    serialization_dir: str,
+    train_loader: allennlp.data.DataLoader,
+    vocab,
+    dev_loader: allennlp.data.DataLoader,
+    num_epochs: int = 3,
+    optimizer=None
+    
+) -> Trainer:
+    
+    from .unlearnable_trainer import ErrorMinUnlearnableTrainer
+
+    trainer = ErrorMinUnlearnableTrainer(
+        model=model,
+        serialization_dir=serialization_dir,
+        data_loader=train_loader,
+        vocab=vocab,
+        validation_data_loader=dev_loader,
+        num_epochs=num_epochs,
+        optimizer=optimizer,
+        learning_rate_scheduler=None,
+        patience=3,
+        callbacks=[TensorBoardCallback(serialization_dir)]
+    )
+    return trainer
+
+
 
 
 def load_sst_model(file_dir, \

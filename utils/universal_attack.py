@@ -151,28 +151,7 @@ class UniversalAttack(Hotflip):
 
                 
                 
-                # we got gradients for all positions but only use the first `self.num_trigger_tokens` positions
-                # Also, if needed, we could record the metrics like accuracy during the forward pass
-                
-                grads, _ = self.predictor.get_gradients(batch_prepended)
-                grads = grads[grad_input_field] # [B, T, C]
-
-
-                # average grad across batch size, result only makes sense for trigger tokens at the front
-                averaged_grad = numpy.sum(grads, 0)
-                averaged_grad = averaged_grad[0:self.num_trigger_tokens] # return shape : (num_trigger_tokens, embsize)
-
-                new_trigger_tokens = [None] * self.num_trigger_tokens
-                # pass the gradients to a particular attack to generate substitute token for each token.
-                for index_of_token_to_flip in range(self.num_trigger_tokens):
-                    original_id_of_token_to_flip = self.vocab.get_token_index(str(self.trigger_tokens[index_of_token_to_flip]), namespace=vocab_namespace)
-                    # Get new token using taylor approximation.
-                    trigger_indexed_token = self._first_order_taylor(
-                        averaged_grad[index_of_token_to_flip, :], 
-                        torch.from_numpy(numpy.array(original_id_of_token_to_flip)), sign
-                    )
-                    token_txt = self.vocab.get_token_from_index(trigger_indexed_token, namespace=vocab_namespace)
-                    new_trigger_tokens[index_of_token_to_flip] = Token(token_txt)
+                new_trigger_tokens = self.update_triggers(batch_prepended, self.predictor, self.vocab, self.trigger_tokens)
                 log_trigger_tokens.append(self.trigger_tokens)
                 self.trigger_tokens = new_trigger_tokens
                     
@@ -189,6 +168,33 @@ class UniversalAttack(Hotflip):
                 loss_lst[epoch+1].append(loss)
         log_trigger_tokens.append(self.trigger_tokens)
         return loss_lst, metrics_lst, log_trigger_tokens
+
+    
+
+    def update_triggers(self, batch_prepended, predictor, vocab, trigger_tokens):
+        num_trigger_tokens = len(trigger_tokens)
+        # we got gradients for all positions but only use the first `self.num_trigger_tokens` positions
+        # Also, if needed, we could record the metrics like accuracy during the forward pass
+        
+        grads, _ = predictor.get_gradients(batch_prepended)
+        grads = grads[self.grad_input_field] # [B, T, C]
+
+
+        # average grad across batch size, result only makes sense for trigger tokens at the front
+        averaged_grad = numpy.sum(grads, 0)
+        averaged_grad = averaged_grad[0:num_trigger_tokens] # return shape : (num_trigger_tokens, embsize)
+
+        new_trigger_tokens = [None] * num_trigger_tokens
+        # pass the gradients to a particular attack to generate substitute token for each token.
+        for index_of_token_to_flip in range(num_trigger_tokens):
+            original_id_of_token_to_flip = vocab.get_token_index(str(trigger_tokens[index_of_token_to_flip]), namespace=vocab_namespace)
+            # Get new token using taylor approximation.
+            trigger_indexed_token = self._first_order_taylor(
+                averaged_grad[index_of_token_to_flip, :], 
+                torch.from_numpy(numpy.array(original_id_of_token_to_flip)), sign
+            )
+            token_txt = vocab.get_token_from_index(trigger_indexed_token, namespace=vocab_namespace)
+            new_trigger_tokens[index_of_token_to_flip] = Token(token_txt)
 
     def evaluate_instances(self, targeted_instances):
         self.predictor._model.get_metrics(reset=True)
@@ -213,54 +219,55 @@ class UniversalAttack(Hotflip):
 
         return model.get_metrics()['accuracy'], float(outputs['loss'])
 
-
-    def _first_order_taylor(self, grad: numpy.ndarray, token_idx: torch.Tensor, sign: int) -> int:
-        """
-        The below code is based on
-        https://github.com/pmichel31415/translate/blob/paul/pytorch_translate/
-        research/adversarial/adversaries/brute_force_adversary.py
-
-        Replaces the current token_idx with another token_idx to increase the loss. In particular, this
-        function uses the grad, alongside the embedding_matrix to select the token that maximizes the
-        first-order taylor approximation of the loss.
-        """
-        grad = util.move_to_device(torch.from_numpy(grad), self.cuda_device)
-        if token_idx.size() != ():
-            # We've got an encoder that only has character ids as input.  We don't curently handle
-            # this case, and it's not clear it's worth it to implement it.  We'll at least give a
-            # nicer error than some pytorch dimension mismatch.
-            raise NotImplementedError(
-                "You are using a character-level indexer with no other indexers. This case is not "
-                "currently supported for hotflip. If you would really like to see us support "
-                "this, please open an issue on github."
-            )
-        if token_idx >= self.embedding_matrix.size(0):
-            # This happens when we've truncated our fake embedding matrix.  We need to do a dot
-            # product with the word vector of the current token; if that token is out of
-            # vocabulary for our truncated matrix, we need to run it through the embedding layer.
-            inputs = self._make_embedder_input([self.vocab.get_token_from_index(token_idx.item())])
-            word_embedding = self.embedding_layer(inputs)[0]
-        else:
-            word_embedding = torch.nn.functional.embedding(
-                util.move_to_device(torch.LongTensor([token_idx]), self.cuda_device),
-                self.embedding_matrix,
-            )
-        word_embedding = word_embedding.detach().unsqueeze(0)
-        grad = grad.unsqueeze(0).unsqueeze(0)
-        # solves equation (3) here https://arxiv.org/abs/1903.06620
-        new_embed_dot_grad = torch.einsum("bij,kj->bik", (grad, self.embedding_matrix))
-        prev_embed_dot_grad = torch.einsum("bij,bij->bi", (grad, word_embedding)).unsqueeze(-1)
-        neg_dir_dot_grad = sign * (prev_embed_dot_grad - new_embed_dot_grad)
-        neg_dir_dot_grad = neg_dir_dot_grad.detach().cpu().numpy()
-        # Do not replace with non-alphanumeric tokens
-        neg_dir_dot_grad[:, :, self.invalid_replacement_indices] = -numpy.inf
-        best_at_each_step = neg_dir_dot_grad.argmax(2)
-        return best_at_each_step[0].data[0]
-
-
-#         torch.topk(torch.Tensor(neg_dir_dot_grad), 3, dim=2)[1][0,0,:].tolist()
-# list(numpy.argsort(neg_dir_dot_grad, axis=2)[0][0][::-1][:3])
-#            
+#     @classmethod
+#     def _first_order_taylor_cls(self, grad: numpy.ndarray, embedding_matrix, token_idx: torch.Tensor, vocab, sign: int, cuda_device=-1) -> int:
+#         
+#         """
+#         The below code is based on
+#         https://github.com/pmichel31415/translate/blob/paul/pytorch_translate/
+#         research/adversarial/adversaries/brute_force_adversary.py
+# 
+#         Replaces the current token_idx with another token_idx to increase the loss. In particular, this
+#         function uses the grad, alongside the embedding_matrix to select the token that maximizes the
+#         first-order taylor approximation of the loss.
+#         """
+#         grad = util.move_to_device(torch.from_numpy(grad), cuda_device)
+#         if token_idx.size() != ():
+#             # We've got an encoder that only has character ids as input.  We don't curently handle
+#             # this case, and it's not clear it's worth it to implement it.  We'll at least give a
+#             # nicer error than some pytorch dimension mismatch.
+#             raise NotImplementedError(
+#                 "You are using a character-level indexer with no other indexers. This case is not "
+#                 "currently supported for hotflip. If you would really like to see us support "
+#                 "this, please open an issue on github."
+#             )
+#         if token_idx >= embedding_matrix.size(0):
+#             # This happens when we've truncated our fake embedding matrix.  We need to do a dot
+#             # product with the word vector of the current token; if that token is out of
+#             # vocabulary for our truncated matrix, we need to run it through the embedding layer.
+#             inputs = self._make_embedder_input_cls([vocab.get_token_from_index(token_idx.item())])
+#             word_embedding = self.embedding_layer(inputs)[0]
+#         else:
+#             word_embedding = torch.nn.functional.embedding(
+#                 util.move_to_device(torch.LongTensor([token_idx]), cuda_device),
+#                 embedding_matrix,
+#             )
+#         word_embedding = word_embedding.detach().unsqueeze(0)
+#         grad = grad.unsqueeze(0).unsqueeze(0)
+#         # solves equation (3) here https://arxiv.org/abs/1903.06620
+#         new_embed_dot_grad = torch.einsum("bij,kj->bik", (grad, embedding_matrix))
+#         prev_embed_dot_grad = torch.einsum("bij,bij->bi", (grad, word_embedding)).unsqueeze(-1)
+#         neg_dir_dot_grad = sign * (prev_embed_dot_grad - new_embed_dot_grad)
+#         neg_dir_dot_grad = neg_dir_dot_grad.detach().cpu().numpy()
+#         # Do not replace with non-alphanumeric tokens
+#         neg_dir_dot_grad[:, :, self.invalid_replacement_indices] = -numpy.inf
+#         best_at_each_step = neg_dir_dot_grad.argmax(2)
+#         return best_at_each_step[0].data[0]
+        # torch.topk(torch.Tensor(neg_dir_dot_grad), 3, dim=2)[1][0,0,:].tolist()
+        # list(numpy.argsort(neg_dir_dot_grad, axis=2)[0][0][::-1][:3])
+    
+   
+           
  
 
 
