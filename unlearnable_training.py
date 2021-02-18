@@ -1,6 +1,6 @@
 
 ### USER INPUT 
-TRAIN_TYPE = 'error_min' # None # 'error_min' # 
+TRAIN_TYPE =   'error_max' # 'error_min' #None #
 MODEL_TYPE = 'finetuned_bert' #'lstm' #
 num_epochs=3
 bsz = 32
