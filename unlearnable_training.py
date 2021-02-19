@@ -1,28 +1,41 @@
 
 ### USER INPUT 
 TRAIN_TYPE =   None # 'error_max' # 'error_min' #
-MODEL_TYPE = 'cnn' # 'finetuned_bert' #'lstm' # 
+MODEL_TYPE = 'lstm' # 'cnn' # 'finetuned_bert' #
 num_epochs=3
 bsz = 32
-sst_granularity = '2-class'
+sst_granularity = 5
 ###
 
+LABELS = [i for i in range(sst_granularity)]
 if TRAIN_TYPE is None:
-    MODELS_DIR = f'checkpoints/bi_sst/'
+    if sst_granularity == 2:
+        MODELS_DIR = f'checkpoints/bi_sst/'
+    elif sst_granularity == 5:
+        MODELS_DIR = 'checkpoints/five_way_sst/'
+    else:
+        print('Invalid `sst_granularity`')
+        exit()
 else:
-    MODELS_DIR = f'checkpoints/bi_sst_{TRAIN_TYPE}/'
+    if sst_granularity == 2:
+        MODELS_DIR = f'checkpoints/bi_sst_{TRAIN_TYPE}/'
+    elif sst_granularity == 5:
+        MODELS_DIR = f'checkpoints/five_way_sst_{TRAIN_TYPE}/'
+    else:
+        print('Invalid `sst_granularity`')
+        exit()
 
 output_dir = f"{MODELS_DIR}{MODEL_TYPE}/"
 
 if MODEL_TYPE == 'finetuned_bert':
-    READER_TYPE= 'pretrained' # None # 
-    pretrained_model = 'bert-base-uncased' # None # 
-    EMBEDDING_TYPE = None # "w2v" # 
+    READER_TYPE= 'pretrained' 
+    pretrained_model = 'bert-base-uncased' 
+    EMBEDDING_TYPE = None 
 
-elif MODEL_TYPE =='lstm' :
+elif MODEL_TYPE =='lstm' or MODEL_TYPE == 'cnn' :
     READER_TYPE= None 
     pretrained_model = None 
-    EMBEDDING_TYPE = "w2v" 
+    EMBEDDING_TYPE = None #"w2v" 
 
 # load training data 
 from allennlp.data.vocabulary import Vocabulary
@@ -37,12 +50,12 @@ from utils.allennlp_data import load_sst_data
 reader, train_data = load_sst_data('train', \
     READER_TYPE=READER_TYPE, \
     pretrained_model = pretrained_model,
-    granularity = sst_granularity)
+    granularity = str(sst_granularity)+'-class')
 
-_, test_data = load_sst_data('test', \
+_, test_data = load_sst_data('dev', \
     READER_TYPE=READER_TYPE, \
     pretrained_model = pretrained_model,
-    granularity = sst_granularity)
+    granularity = str(sst_granularity)+'-class')
 
 train_data, test_data = list(train_data), list(test_data)
 
@@ -88,7 +101,8 @@ train_sst_model(output_dir, train_data, test_data, \
     MODEL_TYPE=MODEL_TYPE, \
     EMBEDDING_TYPE = EMBEDDING_TYPE,  \
     pretrained_model = pretrained_model, num_epochs=num_epochs, bsz = bsz,\
-    TRAIN_TYPE=TRAIN_TYPE)
+    TRAIN_TYPE=TRAIN_TYPE,
+    LABELS=LABELS)
 
     
  

@@ -9,29 +9,30 @@ import os
 from copy import deepcopy
 
 label_filter = 1
-MODELS_DIR = 'checkpoints/bi_sst/'
-MODEL_TYPE = 'cnn' 
-sst_granularity = '5-class'
+MODELS_DIR = 'checkpoints/five_way_sst/'
+sst_granularity = 5
+MODEL_TYPE = 'lstm' 
+
 
 if MODEL_TYPE == 'finetuned_bert':
-    READER_TYPE= 'pretrained' # None # 
-    pretrained_model = 'bert-base-uncased' # None # 
-    EMBEDDING_TYPE = None # "w2v" # 
+    READER_TYPE= 'pretrained' 
+    pretrained_model = 'bert-base-uncased'  
+    EMBEDDING_TYPE = None 
 
-elif MODEL_TYPE =='lstm' :
+elif MODEL_TYPE =='lstm' or MODEL_TYPE=='cnn' :
     READER_TYPE= None 
     pretrained_model = None 
-    EMBEDDING_TYPE = "w2v" 
+    EMBEDDING_TYPE = None # "w2v" 
 
 from utils.allennlp_data import load_sst_data
 datareader, dev_data = load_sst_data('dev',\
         READER_TYPE=READER_TYPE, \
         pretrained_model = pretrained_model,
-        granularity = sst_granularity)
+        granularity = str(sst_granularity)+'-class')
 _, test_data = load_sst_data('test',\
         READER_TYPE=READER_TYPE, \
         pretrained_model = pretrained_model,
-        granularity = sst_granularity)
+        granularity = str(sst_granularity)+'-class')
 
     
 # load data and model
@@ -39,7 +40,7 @@ vocab, model = load_sst_model(f"{MODELS_DIR}{MODEL_TYPE}/",  MODEL_TYPE=MODEL_TY
 
 if MODEL_TYPE == 'finetuned_bert':
     vocab_namespace='tags'
-elif MODEL_TYPE == 'lstm' and EMBEDDING_TYPE == 'w2v':
+elif MODEL_TYPE == 'lstm' or MODEL_TYPE=='cnn':
     vocab_namespace='tokens'
 
 
@@ -97,7 +98,7 @@ for M in os.listdir(MODELS_DIR):
         _, test_data = load_sst_data('test',\
                                         READER_TYPE=READER_TYPE, \
                                         pretrained_model = pretrained_model,
-                                        granularity = sst_granularity)
+                                        granularity = str(sst_granularity)+'-class')
 
         MODELS[M] = (deepcopy(model), deepcopy(vocab), deepcopy(list(test_data)))
 
@@ -130,10 +131,7 @@ for M in accs.keys():
     result_df[f'{M}_accuracy'] = accs[M]
 
 # result_long_df = pd.melt(result_df , ['iteration'])
-if MODEL_TYPE == "lstm" :
-    result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(1-label_filter)}.csv')
-else: 
-    result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(label_filter)}.csv')
+result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(label_filter)}.csv')
 
 
 

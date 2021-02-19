@@ -100,9 +100,16 @@ def train_sst_model(output_dir, train_data, dev_data, \
     pretrained_model = 'bert-base-uncased',
     num_epochs=3,
     bsz = 32,
-    TRAIN_TYPE=None):
+    TRAIN_TYPE=None,
+    LABELS = [0, 1]):
 
-    
+    # initialize vocab with specified 'labels' namespace
+    from allennlp.data.fields import LabelField
+    tmp_instances = []
+    for label in LABELS:
+        # _label_index should not be set, otherwise Vocabulary couter would not count LabelField
+        tmp_instances.append(Instance(fields={'labels': LabelField(str(label), skip_indexing=False)}))
+    vocab = Vocabulary.from_instances(tmp_instances) 
     
     if MODEL_TYPE == "finetuned_bert":
 
@@ -136,11 +143,8 @@ def train_sst_model(output_dir, train_data, dev_data, \
         # here, just construct namespace for labels fields 
         # TODO: Deprecate the use of LabelField and directly use label tensor 
         #   for forward and backward in Model
-        vocab = Vocabulary.empty()
-        from allennlp.data.fields import LabelField
-        tmp_instances = [Instance(fields={'labels': LabelField('0', skip_indexing=False)}), \
-            Instance(fields={'labels': LabelField('1', skip_indexing=False)})]
-        vocab = Vocabulary.from_instances(tmp_instances) 
+        
+
         # not sure the original idea using tags namespace in vocab, I choose ignoring it 
         #reader._token_indexers['tokens']._add_encoding_to_vocabulary_if_needed(vocab) 
         token_embedding = PretrainedTransformerEmbedder(model_name=pretrained_model, train_parameters=True)
@@ -154,10 +158,9 @@ def train_sst_model(output_dir, train_data, dev_data, \
         model.cuda()
     else:
         # 2. token embedding
-        vocab = Vocabulary.from_instances(train_data)
+        vocab.extend_from_instances(train_data)
+        # vocab = Vocabulary.from_instances(train_data)
         vocab_size = vocab.get_vocab_size('tokens')
-        vocab_path =  "vocab"
-        vocab.save_to_files(output_dir + vocab_path)
         word_embedding_dim = 300
         if EMBEDDING_TYPE is None:
             token_embedding = Embedding(num_embeddings=vocab_size, embedding_dim=word_embedding_dim)
@@ -181,7 +184,7 @@ def train_sst_model(output_dir, train_data, dev_data, \
                                                         hidden_size=512,
                                                         num_layers=2,
                                                         batch_first=True))
-        elif MODEL_TYPE = 'cnn':
+        elif MODEL_TYPE == 'cnn':
             
             encoder = CnnEncoder(word_embedding_dim, num_filters=6)
         
@@ -236,7 +239,8 @@ def train_sst_model(output_dir, train_data, dev_data, \
     # define output path
     # model_path = "model.th"
     # with open(model_path, 'wb') as f:
-    #     save(model.state_dict(), f)
+    #     save(model.state_dict(), f) 
+    vocab.save_to_files(output_dir + "vocab")
     
     
 
@@ -337,10 +341,16 @@ def load_sst_model(file_dir, \
         word_embedding_dim = 300
         vocab_size = vocab.get_vocab_size('tokens')
         word_embeddings = BasicTextFieldEmbedder({"tokens": Embedding(num_embeddings=vocab_size, embedding_dim=word_embedding_dim)})
-        encoder = PytorchSeq2VecWrapper(LSTM(word_embedding_dim,
+        # 3. seq2vec encoder
+        if MODEL_TYPE == 'lstm':
+            encoder = PytorchSeq2VecWrapper(LSTM(word_embedding_dim,
                                                         hidden_size=512,
                                                         num_layers=2,
                                                         batch_first=True))
+        elif MODEL_TYPE == 'cnn':
+            
+            encoder = CnnEncoder(word_embedding_dim, num_filters=6)
+            
         model = SSTClassifier(word_embeddings, encoder, vocab)
 
     if os.path.isfile(file_dir + "model.th"):
