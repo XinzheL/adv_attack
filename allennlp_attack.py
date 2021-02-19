@@ -11,6 +11,7 @@ from copy import deepcopy
 label_filter = 1
 MODELS_DIR = 'checkpoints/bi_sst/'
 MODEL_TYPE = 'cnn' 
+sst_granularity = '5-class'
 
 if MODEL_TYPE == 'finetuned_bert':
     READER_TYPE= 'pretrained' # None # 
@@ -25,10 +26,12 @@ elif MODEL_TYPE =='lstm' :
 from utils.allennlp_data import load_sst_data
 datareader, dev_data = load_sst_data('dev',\
         READER_TYPE=READER_TYPE, \
-        pretrained_model = pretrained_model)
+        pretrained_model = pretrained_model,
+        granularity = sst_granularity)
 _, test_data = load_sst_data('test',\
         READER_TYPE=READER_TYPE, \
-        pretrained_model = pretrained_model)
+        pretrained_model = pretrained_model,
+        granularity = sst_granularity)
 
     
 # load data and model
@@ -93,7 +96,8 @@ for M in os.listdir(MODELS_DIR):
 
         _, test_data = load_sst_data('test',\
                                         READER_TYPE=READER_TYPE, \
-                                        pretrained_model = pretrained_model)
+                                        pretrained_model = pretrained_model,
+                                        granularity = sst_granularity)
 
         MODELS[M] = (deepcopy(model), deepcopy(vocab), deepcopy(list(test_data)))
 

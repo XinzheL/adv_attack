@@ -4,6 +4,7 @@ TRAIN_TYPE =   None # 'error_max' # 'error_min' #
 MODEL_TYPE = 'cnn' # 'finetuned_bert' #'lstm' # 
 num_epochs=3
 bsz = 32
+sst_granularity = '2-class'
 ###
 
 if TRAIN_TYPE is None:
@@ -35,11 +36,13 @@ label_ids = [0, 1] # I hope it equals to label in LabelField, TODO: re-train it 
 from utils.allennlp_data import load_sst_data
 reader, train_data = load_sst_data('train', \
     READER_TYPE=READER_TYPE, \
-    pretrained_model = pretrained_model)
+    pretrained_model = pretrained_model,
+    granularity = sst_granularity)
 
 _, test_data = load_sst_data('test', \
     READER_TYPE=READER_TYPE, \
-    pretrained_model = pretrained_model)
+    pretrained_model = pretrained_model,
+    granularity = sst_granularity)
 
 train_data, test_data = list(train_data), list(test_data)
 

@@ -131,7 +131,7 @@ def collate_fn(batch):
     return batch.as_tensor_dict(batch.get_padding_lengths())
 
             
-def load_sst_data(split, READER_TYPE='None', pretrained_model = 'bert-base-uncased'):
+def load_sst_data(split, READER_TYPE='None', pretrained_model = 'bert-base-uncased', granularity = '2-class'):
     
 
     from allennlp_models.classification.dataset_readers.stanford_sentiment_tree_bank import StanfordSentimentTreeBankDatasetReader
@@ -147,10 +147,10 @@ def load_sst_data(split, READER_TYPE='None', pretrained_model = 'bert-base-uncas
         #tokenizer = PretrainedTransformerTokenizer(model_name=pretrained_model, add_special_tokens=False)
         indexer = PretrainedTransformerIndexer(model_name=pretrained_model,) 
         tokenizer = indexer._allennlp_tokenizer
-        reader = StanfordSentimentTreeBankDatasetReader(granularity="2-class", tokenizer=tokenizer, token_indexers={"tokens": indexer})
+        reader = StanfordSentimentTreeBankDatasetReader(granularity=granularity, tokenizer=tokenizer, token_indexers={"tokens": indexer})
     else: # READER_TYPE is None:
         indexer = SingleIdTokenIndexer(lowercase_tokens=True) # word tokenizer
-        reader = StanfordSentimentTreeBankDatasetReader(granularity="2-class", token_indexers={"tokens": indexer})
+        reader = StanfordSentimentTreeBankDatasetReader(granularity=granularity, token_indexers={"tokens": indexer})
     # load file
     instance_generator = reader.read(file_path) # return list of Instance object
     
