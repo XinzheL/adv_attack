@@ -10,7 +10,7 @@ from copy import deepcopy
 
 label_filter = 1
 MODELS_DIR = 'checkpoints/bi_sst/'
-MODEL_TYPE = 'lstm'
+MODEL_TYPE = 'cnn' 
 
 if MODEL_TYPE == 'finetuned_bert':
     READER_TYPE= 'pretrained' # None # 

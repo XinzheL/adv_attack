@@ -4,7 +4,8 @@ from allennlp.nn.util import get_text_field_mask
 from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 from allennlp.modules.token_embedders.pretrained_transformer_embedder import PretrainedTransformerEmbedder
 from allennlp.modules.token_embedders import Embedding
-from allennlp.modules.seq2vec_encoders import PytorchSeq2VecWrapper, BertPooler
+from allennlp.modules.seq2vec_encoders import PytorchSeq2VecWrapper, BertPooler, CnnEncoder
+
 from torch.nn import LSTM, Linear, CrossEntropyLoss
 from allennlp.training.metrics import CategoricalAccuracy
 from allennlp.data.token_indexers import SingleIdTokenIndexer
@@ -180,9 +181,14 @@ def train_sst_model(output_dir, train_data, dev_data, \
                                                         hidden_size=512,
                                                         num_layers=2,
                                                         batch_first=True))
-            # 4. construct model
-            model = SSTClassifier(word_embeddings, encoder, vocab)
-            model.cuda()
+        elif MODEL_TYPE = 'cnn':
+            
+            encoder = CnnEncoder(word_embedding_dim, num_filters=6)
+        
+        # 4. construct model
+        model = SSTClassifier(word_embeddings, encoder, vocab)
+        model.cuda()
+
             
 
             
