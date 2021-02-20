@@ -151,7 +151,7 @@ class UniversalAttack(Hotflip):
 
                 
                 
-                new_trigger_tokens = self.update_triggers(batch_prepended, self.predictor, self.vocab, self.trigger_tokens, sign)
+                new_trigger_tokens = self.update_triggers(batch_prepended, self.predictor, self.vocab,self.trigger_tokens, sign, vocab_namespace=vocab_namespace)
                 log_trigger_tokens.append(self.trigger_tokens)
                 self.trigger_tokens = new_trigger_tokens
                     

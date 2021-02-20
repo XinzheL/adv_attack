@@ -342,7 +342,7 @@ def load_sst_model(file_dir, \
         vocab_size = vocab.get_vocab_size('tokens')
         word_embeddings = BasicTextFieldEmbedder({"tokens": Embedding(num_embeddings=vocab_size, embedding_dim=word_embedding_dim)})
         # 3. seq2vec encoder
-        if MODEL_TYPE == 'lstm':
+        if MODEL_TYPE == 'lstm' or MODEL_TYPE == 'lstm_w2v':
             encoder = PytorchSeq2VecWrapper(LSTM(word_embedding_dim,
                                                         hidden_size=512,
                                                         num_layers=2,
@@ -350,6 +350,9 @@ def load_sst_model(file_dir, \
         elif MODEL_TYPE == 'cnn':
             
             encoder = CnnEncoder(word_embedding_dim, num_filters=6)
+        else:
+            print(f'Invalid MODEL_TYPE {MODEL_TYPE}')
+            exit()
             
         model = SSTClassifier(word_embeddings, encoder, vocab)
 
