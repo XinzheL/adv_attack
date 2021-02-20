@@ -3,35 +3,44 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas
 
-MODELS_TO_CHOOSE = ['lstm', 'finetuned_bert']
-label = "1"
+MODELS_TO_CHOOSE = ['lstm', 'lstm_w2v', 'cnn', 'finetuned_bert', ]
+LABELS = ["0", "1"]
 
 fig = plt.figure(figsize=(16, 6), dpi=100)
-# axe for accuracy
-ax1 = fig.add_subplot(1,1,1)
+
+axes = fig.subplots(2,2, sharex='col', sharey='row')
+
 # ax1.set_xticks(np.linspace(min(result_df.index), max(result_df.index), num=5, dtype=int))
 #     ax1.set_xticklabels(np.linspace(min(result_df.index)+1, max(result_df.index)+1, num=5 , dtype=int))
 # axe for loss
-ax2 = ax1.twinx()
+#ax2 = ax1.twinx()
 
-COLORS_FOR_METRICS = ['teal', 'blue']
-COLORS_FOR_LOSS = ['red', 'yellow']
-ALPHAS = np.linspace(0.1, 1, num=len(MODELS_TO_CHOOSE), dtype=float)
-for i, MODEL in enumerate(MODELS_TO_CHOOSE):
-    result_df = pandas.read_csv(f'result_data/{MODEL}_{label}.csv')
-    # eric_result_0 = [0.831,0.841, 0.121, 0.086] # neg(0) to pos(1): [the], [captivating, captivating, captivating] , [vividly, georgian-israeli, captivating]
-    # eric_result_1 = [0.8761261261261262, 0.1373873873873874, 0.04504504504504504, 0.018018018018018018, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764, 0.015765765765765764] # pos(1) to neg(0)
-    
-    sns.lineplot(data=result_df, x='iteration', y='accuracy', label=f'accuracy-{MODEL}', color='teal', alpha=ALPHAS[i], ax=ax1, linestyle='-', linewidth=2,)
-    
-    
-    sns.lineplot(data=result_df, x='iteration', y='loss', label=f'loss-{MODEL}', color='red', alpha=ALPHAS[i], ax=ax2, linestyle='-', linewidth=2)
+COLORS = ['teal', 'orange', '#e87a59', 'red', 'yellow', 'green']
 
-ax1.legend(loc="lower right")
-ax2.legend(loc="upper right")
+ALPHAS = [0.5, 0.5, 0.5, 1]#np.linspace(0.1, 1, num=len(MODELS_TO_CHOOSE), dtype=float)
 
-if label== "1":
-    plt.title('Positive Examples')
-elif label == "0":
-    plt.title('Negative Examples')
+for j in range(len(axes)): # num of columns in a row
+    label = LABELS[j]
+    
+    for i, MODEL in enumerate(MODELS_TO_CHOOSE):
+        result_df = pandas.read_csv(f'result_data/{MODEL}_{label}.csv')
+        sns.lineplot(data=result_df, x='iteration', y='accuracy', label=f'{MODEL}', color=COLORS[i], alpha=ALPHAS[i], ax=axes[0][j], linestyle='-', linewidth=2,)
+        sns.lineplot(data=result_df, x='iteration', y='loss', label=f'{MODEL}', color=COLORS[i], alpha=ALPHAS[i], ax=axes[1][j], linestyle='-', linewidth=2)
+
+    if label== "1":
+        axes[0][j].set_title('Positive Examples')
+        axes[1][j].set_title('Positive Examples')
+    elif label == "0":
+        axes[0][j].set_title('Negative Examples')
+        axes[1][j].set_title('Negative Examples')
+    axes[0][j].legend([],[], frameon=False)
+    axes[1][j].legend([],[], frameon=False)
+    axes[0][j].set_ylabel('Accuracy')
+    axes[0][j].set_xlabel('Iteration')
+    axes[1][j].set_ylabel('Loss')
+    axes[1][j].set_xlabel('Iteration')
+
+
+handles, labels = axes[0][1].get_legend_handles_labels()
+fig.legend(handles, labels, loc='upper right')
 plt.show()
