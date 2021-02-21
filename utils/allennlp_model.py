@@ -101,7 +101,8 @@ def train_sst_model(output_dir, train_data, dev_data, \
     num_epochs=3,
     bsz = 32,
     TRAIN_TYPE=None,
-    LABELS = [0, 1]):
+    LABELS = [0, 1],
+    activation=None):
 
     # initialize vocab with specified 'labels' namespace
     from allennlp.data.fields import LabelField
@@ -111,7 +112,7 @@ def train_sst_model(output_dir, train_data, dev_data, \
         tmp_instances.append(Instance(fields={'labels': LabelField(str(label), skip_indexing=False)}))
     vocab = Vocabulary.from_instances(tmp_instances) 
     
-    if MODEL_TYPE == "finetuned_bert":
+    if "finetuned_bert" in MODEL_TYPE:
 
         # 2. token embedding
         # Problem: in huggingface, tokenizer is reponsible for tokenization and indexing which,
@@ -155,7 +156,7 @@ def train_sst_model(output_dir, train_data, dev_data, \
         # 4. construct model
         
         model = BertForClassification(vocab, BasicTextFieldEmbedder({"tokens": token_embedding}), encoder)
-        model.cuda()
+        
     else:
         # 2. token embedding
         vocab.extend_from_instances(train_data)
@@ -179,37 +180,21 @@ def train_sst_model(output_dir, train_data, dev_data, \
         word_embeddings = BasicTextFieldEmbedder({"tokens": token_embedding})
          
         # 3. seq2vec encoder
-        if MODEL_TYPE == 'lstm':
+        if 'lstm' in MODEL_TYPE:
             encoder = PytorchSeq2VecWrapper(LSTM(word_embedding_dim,
                                                         hidden_size=512,
                                                         num_layers=2,
                                                         batch_first=True))
-        elif MODEL_TYPE == 'cnn':
-            
-            encoder = CnnEncoder(word_embedding_dim, num_filters=6)
+        elif 'cnn' in MODEL_TYPE:
+            encoder = CnnEncoder(word_embedding_dim, num_filters=6, conv_layer_activation=activation)
         
         # 4. construct model
         model = SSTClassifier(word_embeddings, encoder, vocab)
-        model.cuda()
-
-            
-
-            
+    model.cuda()
+      
     # 5. train model from scratch and save its weights
-    
-    
-    # from .allennlp_data import AllennlpDataset
-    # train_data = AllennlpDataset(train_data, vocab)
-    # dev_data = AllennlpDataset(dev_data, vocab)
-    # This is the allennlp-specific functionality in the Dataset object;
-    # we need to be able convert strings in the data to integers, and this
-    # is how we do it.
-    
-    
-    
-    
     # define optim
-    if MODEL_TYPE == "finetuned_bert":
+    if "finetuned_bert" in MODEL_TYPE:
         optimizer = AdamW(model.parameters(),
                         lr=5e-5,    # Default learning rate
                         eps=1e-8    # Default epsilon value
@@ -224,9 +209,9 @@ def train_sst_model(output_dir, train_data, dev_data, \
         train_loader, dev_loader = build_data_loaders(list(train_data), list(dev_data), vocab, bsz=bsz)
         trainer = build_trainer(model, output_dir, train_loader, dev_loader, num_epochs=num_epochs, optimizer=optimizer)
     elif TRAIN_TYPE == "error_min":
-        if MODEL_TYPE == 'finetuned_bert':
+        if 'finetuned_bert' in MODEL_TYPE:
             vocab_namespace='tags'
-        elif MODEL_TYPE == 'lstm' and EMBEDDING_TYPE == 'w2v':
+        elif 'lstm' in MODEL_TYPE:
             vocab_namespace='tokens'
         train_loader = MySimpleDataLoader(train_data, batch_size=bsz, shuffle=False, vocab=vocab, )
         dev_loader = SimpleDataLoader(dev_data, batch_size=bsz, shuffle=False, vocab=vocab)
@@ -236,10 +221,8 @@ def train_sst_model(output_dir, train_data, dev_data, \
     
     trainer.train()
 
-    # define output path
-    # model_path = "model.th"
-    # with open(model_path, 'wb') as f:
-    #     save(model.state_dict(), f) 
+    # save vocab, considering model would be saved automatically, I think 
+    # somehome, vocab should also be saved somewhere in allennlp process
     vocab.save_to_files(output_dir + "vocab")
     
     
@@ -328,7 +311,7 @@ def load_sst_model(file_dir, \
     vocab = Vocabulary.from_files(vocab_path)
     
 
-    if MODEL_TYPE == "finetuned_bert":
+    if "finetuned_bert" in MODEL_TYPE:
         
         # embedding
         token_embedding = PretrainedTransformerEmbedder(model_name=pretrained_model, train_parameters=True)
@@ -336,18 +319,21 @@ def load_sst_model(file_dir, \
         encoder = BertPooler(pretrained_model=pretrained_model, dropout=0.1, requires_grad=True)
         # construct model
         model = BertForClassification(vocab, BasicTextFieldEmbedder({"tokens": token_embedding}), encoder)
+        
         model.cuda()
+        
+        
     else:
         word_embedding_dim = 300
         vocab_size = vocab.get_vocab_size('tokens')
         word_embeddings = BasicTextFieldEmbedder({"tokens": Embedding(num_embeddings=vocab_size, embedding_dim=word_embedding_dim)})
         # 3. seq2vec encoder
-        if MODEL_TYPE == 'lstm' or MODEL_TYPE == 'lstm_w2v':
+        if 'lstm' in MODEL_TYPE:
             encoder = PytorchSeq2VecWrapper(LSTM(word_embedding_dim,
                                                         hidden_size=512,
                                                         num_layers=2,
                                                         batch_first=True))
-        elif MODEL_TYPE == 'cnn':
+        elif 'cnn' in MODEL_TYPE:
             
             encoder = CnnEncoder(word_embedding_dim, num_filters=6)
         else:
@@ -355,6 +341,7 @@ def load_sst_model(file_dir, \
             exit()
             
         model = SSTClassifier(word_embeddings, encoder, vocab)
+
 
     if os.path.isfile(file_dir + "model.th"):
         model_path = file_dir + "model.th"

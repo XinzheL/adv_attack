@@ -16,16 +16,16 @@ def attack(label_filter, MODEL_TYPE, sst_granularity = 2):
 
 
 
-    if MODEL_TYPE == 'finetuned_bert':
+    if 'finetuned_bert' in MODEL_TYPE:
         READER_TYPE= 'pretrained' 
         pretrained_model = 'bert-base-uncased'  
         EMBEDDING_TYPE = None 
 
-    elif  'lstm' in MODEL_TYPE or MODEL_TYPE=='cnn' :
+    elif  'lstm' in MODEL_TYPE or 'cnn' in MODEL_TYPE :
         READER_TYPE= None 
         pretrained_model = None 
         EMBEDDING_TYPE = None 
-        if MODEL_TYPE == 'lstm_w2v':
+        if 'w2v' in MODEL_TYPE:
             EMBEDDING_TYPE =  "w2v" 
 
     from utils.allennlp_data import load_sst_data
@@ -44,7 +44,7 @@ def attack(label_filter, MODEL_TYPE, sst_granularity = 2):
 
     if MODEL_TYPE == 'finetuned_bert':
         vocab_namespace='tags'
-    elif 'lstm' in MODEL_TYPE or MODEL_TYPE=='cnn':
+    elif 'lstm' in MODEL_TYPE or 'cnn' in MODEL_TYPE:
         vocab_namespace='tokens'
 
 
@@ -141,7 +141,7 @@ def attack(label_filter, MODEL_TYPE, sst_granularity = 2):
     result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(label_filter)}.csv')
 
 if __name__ == "__main__":
-    MODEL_TYPES = [ 'finetuned_bert', 'lstm', 'lstm_w2v' ] #'cnn',
+    MODEL_TYPES = ['cnn_tanh']# [ 'finetuned_bert', 'lstm', 'lstm_w2v' ] #'cnn',
     LABELS = [0, 1]
     for MODEL_TYPE in MODEL_TYPES:
         for label_filter in LABELS:

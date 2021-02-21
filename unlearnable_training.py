@@ -1,5 +1,6 @@
-
-def train(TRAIN_TYPE, MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2)
+from allennlp.nn import Activation
+def train(TRAIN_TYPE, MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2, \
+    activation=None):
     LABELS = [i for i in range(sst_granularity)]
     if TRAIN_TYPE is None:
         if sst_granularity == 2:
@@ -25,10 +26,21 @@ def train(TRAIN_TYPE, MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2)
         pretrained_model = 'bert-base-uncased' 
         EMBEDDING_TYPE = None 
 
-    elif MODEL_TYPE =='lstm' or MODEL_TYPE == 'cnn' :
+    elif 'lstm' in MODEL_TYPE or 'cnn'  in MODEL_TYPE:
         READER_TYPE= None 
         pretrained_model = None 
-        EMBEDDING_TYPE = None # "w2v" #
+        if 'w2v' in MODEL_TYPE:
+            EMBEDDING_TYPE = "w2v"
+        else:
+            EMBEDDING_TYPE = None
+
+
+    else:
+        print(f'Invalid MODEL_TYPE {MODEL_TYPE}')
+        exit()
+
+
+        
 
     # load training data 
     from allennlp.data.vocabulary import Vocabulary
@@ -95,16 +107,19 @@ def train(TRAIN_TYPE, MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2)
         EMBEDDING_TYPE = EMBEDDING_TYPE,  \
         pretrained_model = pretrained_model, num_epochs=num_epochs, bsz = bsz,\
         TRAIN_TYPE=TRAIN_TYPE,
-        LABELS=LABELS)
+        LABELS=LABELS,
+        activation=activation)
 
     
  
-if __name__ = "__main__":
-    
+if __name__ == "__main__":
+    activation = Activation.by_name('tanh')()
     #TRAIN_TYPES = [None, 'error_max', 'error_min' ]
-    MODEL_TYPES = ['cnn', 'finetuned_bert', 'lstm' ]
+    MODEL_TYPES = ['cnn_tanh'] #, 'finetuned_bert', 'lstm' ]
     for MODEL_TYPE in MODEL_TYPES:
-        train(TRAIN_TYPE = None, MODEL_TYPE=MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2)
+        train(TRAIN_TYPE = None, MODEL_TYPE=MODEL_TYPE, \
+            num_epochs=3, bsz = 32, sst_granularity = 2,\
+            activation=activation)
     
 
     
