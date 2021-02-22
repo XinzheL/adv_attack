@@ -141,7 +141,7 @@ def attack(label_filter, MODEL_TYPE, sst_granularity = 2):
     result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(label_filter)}.csv')
 
 if __name__ == "__main__":
-    MODEL_TYPES = ['cnn_tanh']# [ 'finetuned_bert', 'lstm', 'lstm_w2v' ] #'cnn',
+    MODEL_TYPES = ['finetuned_bert'] #  'lstm', 'lstm_w2v', 'cnn', 'cnn_tanh'
     LABELS = [0, 1]
     for MODEL_TYPE in MODEL_TYPES:
         for label_filter in LABELS:

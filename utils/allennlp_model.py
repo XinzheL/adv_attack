@@ -320,7 +320,6 @@ def load_sst_model(file_dir, \
         # construct model
         model = BertForClassification(vocab, BasicTextFieldEmbedder({"tokens": token_embedding}), encoder)
         
-        model.cuda()
         
         
     else:
@@ -341,6 +340,7 @@ def load_sst_model(file_dir, \
             exit()
             
         model = SSTClassifier(word_embeddings, encoder, vocab)
+    model.cuda()
 
 
     if os.path.isfile(file_dir + "model.th"):

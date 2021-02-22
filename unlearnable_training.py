@@ -113,9 +113,9 @@ def train(TRAIN_TYPE, MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2, \
     
  
 if __name__ == "__main__":
-    activation = Activation.by_name('tanh')()
+    activation = None #Activation.by_name('tanh')()
     #TRAIN_TYPES = [None, 'error_max', 'error_min' ]
-    MODEL_TYPES = ['cnn_tanh'] #, 'finetuned_bert', 'lstm' ]
+    MODEL_TYPES = [ 'finetuned_bert'  ] #'cnn_tanh' , 'lstm'
     for MODEL_TYPE in MODEL_TYPES:
         train(TRAIN_TYPE = None, MODEL_TYPE=MODEL_TYPE, \
             num_epochs=3, bsz = 32, sst_granularity = 2,\
