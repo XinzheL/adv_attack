@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas
 
-MODELS_TO_CHOOSE = ['lstm', 'lstm_w2v', 'cnn', 'finetuned_bert', ]
+MODELS_TO_CHOOSE = ['lstm', 'lstm_w2v', 'cnn', 'cnn_tanh', 'finetuned_bert' ] #
 LABELS = ["0", "1"]
 
 fig = plt.figure(figsize=(16, 6), dpi=100)
@@ -15,9 +15,9 @@ axes = fig.subplots(2,2, sharex='col', sharey='row')
 # axe for loss
 #ax2 = ax1.twinx()
 
-COLORS = ['teal', 'orange', '#e87a59', 'red', 'yellow', 'green']
+COLORS = ['teal', 'orange', '#e87a59', 'red',  'green', 'yellow',]
 
-ALPHAS = [0.5, 0.5, 0.5, 1]#np.linspace(0.1, 1, num=len(MODELS_TO_CHOOSE), dtype=float)
+ALPHAS = [0.5, 0.5, 0.5, 0.5, 1]#np.linspace(0.1, 1, num=len(MODELS_TO_CHOOSE), dtype=float)
 
 for j in range(len(axes)): # num of columns in a row
     label = LABELS[j]

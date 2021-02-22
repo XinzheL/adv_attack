@@ -335,6 +335,11 @@ def load_sst_model(file_dir, \
         elif 'cnn' in MODEL_TYPE:
             
             encoder = CnnEncoder(word_embedding_dim, num_filters=6)
+        elif 'transformer' in MODEL_TYPE:
+            from allennlp.modules.transformer import TransformerLayer
+            encoder = TransformerLayer(hidden_size=100, intermediate_size=100, \
+                num_attention_heads=8, attention_dropout=0.0, hidden_dropout=0.0, \
+                activation="relu", add_cross_attention=False)
         else:
             print(f'Invalid MODEL_TYPE {MODEL_TYPE}')
             exit()
