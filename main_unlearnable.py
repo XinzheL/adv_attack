@@ -24,21 +24,23 @@ def train(TRAIN_TYPE, MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2, \
     if MODEL_TYPE == 'finetuned_bert':
         READER_TYPE= 'pretrained' 
         pretrained_model = 'bert-base-uncased' 
-        EMBEDDING_TYPE = None 
-
-    elif 'lstm' in MODEL_TYPE or 'cnn'  in MODEL_TYPE:
+    
+    elif 'lstm' in MODEL_TYPE or 'cnn'  in MODEL_TYPE or 'transformer' in MODEL_TYPE:
         READER_TYPE= None 
         pretrained_model = None 
-        if 'w2v' in MODEL_TYPE:
-            EMBEDDING_TYPE = "w2v"
-        else:
-            EMBEDDING_TYPE = None
-
-
     else:
         print(f'Invalid MODEL_TYPE {MODEL_TYPE}')
         exit()
 
+
+    if 'w2v' in MODEL_TYPE:
+        EMBEDDING_TYPE = "w2v"
+    else:
+        EMBEDDING_TYPE = None
+
+
+
+    
 
         
 
@@ -115,7 +117,7 @@ def train(TRAIN_TYPE, MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2, \
 if __name__ == "__main__":
     activation = None #Activation.by_name('tanh')()
     #TRAIN_TYPES = [None, 'error_max', 'error_min' ]
-    MODEL_TYPES = [ 'finetuned_bert'  ] #'cnn_tanh' , 'lstm'
+    MODEL_TYPES = [ 'cnn_w2v' ] #'cnn_tanh' , 'lstm', 'finetuned_bert'  `additive`, `linear`, 'lstm_dot_product'
     for MODEL_TYPE in MODEL_TYPES:
         train(TRAIN_TYPE = None, MODEL_TYPE=MODEL_TYPE, \
             num_epochs=3, bsz = 32, sst_granularity = 2,\

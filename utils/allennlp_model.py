@@ -5,6 +5,7 @@ from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 from allennlp.modules.token_embedders.pretrained_transformer_embedder import PretrainedTransformerEmbedder
 from allennlp.modules.token_embedders import Embedding
 from allennlp.modules.seq2vec_encoders import PytorchSeq2VecWrapper, BertPooler, CnnEncoder
+from allennlp.modules.transformer import TransformerLayer
 
 from torch.nn import LSTM, Linear, CrossEntropyLoss
 from allennlp.training.metrics import CategoricalAccuracy
@@ -33,7 +34,7 @@ from copy import deepcopy
 import os
 
 class SSTClassifier(Model):
-    def __init__(self, word_embeddings, encoder, vocab):
+    def __init__(self, word_embeddings, encoder, vocab, attention=None):
         super().__init__(vocab)
         self.word_embeddings = word_embeddings
         self.encoder = encoder
@@ -42,11 +43,20 @@ class SSTClassifier(Model):
         self.accuracy = CategoricalAccuracy()
         self.loss_function = CrossEntropyLoss()
 
+        
+        self.attention = attention
+        
+            
+
+       
+
     def forward(self, tokens: Dict[str, Dict[str, torch.Tensor]], \
         label: torch.IntTensor = None) -> Dict[str, torch.Tensor]:
-
+        
         mask = get_text_field_mask(tokens) # shape: (B, T)
         embeddings = self.word_embeddings(tokens) # shape: (B, T, C)
+        if self.attention is not None:
+            embeddings = self.attention(embeddings, mask,)[0] # shape: (B, T, C)
         encoder_out = self.encoder(embeddings, mask) # shape: (B, hidden)
         logits = self.linear(encoder_out) # shape: (B, 2)
         output = {"logits": logits}
@@ -187,9 +197,30 @@ def train_sst_model(output_dir, train_data, dev_data, \
                                                         batch_first=True))
         elif 'cnn' in MODEL_TYPE:
             encoder = CnnEncoder(word_embedding_dim, num_filters=6, conv_layer_activation=activation)
-        
+        # elif 'transformer' in MODEL_TYPE:
+        #     
+        #     # TODO: try different scoring function
+        #     encoder = TransformerLayer(hidden_size=word_embedding_dim, intermediate_size=521, \
+        #         num_attention_heads=5, attention_dropout=0.0, hidden_dropout=0.0, \
+        #         activation="relu", add_cross_attention=False)
+        else:
+            print(f'Invalid MODEL_TYPE {MODEL_TYPE}')
+            exit()
+
         # 4. construct model
-        model = SSTClassifier(word_embeddings, encoder, vocab)
+        if "dot_product" in MODEL_TYPE:
+            scoring_func = "dot_product"
+            from .allennlp_transformers import MyAttentionLayer
+            attention = MyAttentionLayer(
+                hidden_size=word_embedding_dim,
+                num_attention_heads=5,
+                attention_dropout=0,
+                hidden_dropout=0,
+                scoring_func= scoring_func,
+            )
+        else:
+            attention = None
+        model = SSTClassifier(word_embeddings, encoder, vocab, attention=attention)
     model.cuda()
       
     # 5. train model from scratch and save its weights
@@ -335,11 +366,11 @@ def load_sst_model(file_dir, \
         elif 'cnn' in MODEL_TYPE:
             
             encoder = CnnEncoder(word_embedding_dim, num_filters=6)
-        elif 'transformer' in MODEL_TYPE:
-            from allennlp.modules.transformer import TransformerLayer
-            encoder = TransformerLayer(hidden_size=100, intermediate_size=100, \
-                num_attention_heads=8, attention_dropout=0.0, hidden_dropout=0.0, \
-                activation="relu", add_cross_attention=False)
+        # elif 'transformer' in MODEL_TYPE:
+        #     from allennlp.modules.transformer import TransformerLayer
+        #     encoder = TransformerLayer(hidden_size=100, intermediate_size=100, \
+        #         num_attention_heads=8, attention_dropout=0.0, hidden_dropout=0.0, \
+        #         activation="relu", add_cross_attention=False)
         else:
             print(f'Invalid MODEL_TYPE {MODEL_TYPE}')
             exit()
@@ -360,6 +391,31 @@ def load_sst_model(file_dir, \
     model.train().cuda() # rnn cannot do backwards in train mode
 
     return vocab, model
+
+def load_all_trained_models(MODELS_DIR, MODEL_TYPES):
+    MODELS = {}
+    for M in os.listdir(MODELS_DIR):
+        if M in MODEL_TYPES:
+            if M == 'finetuned_bert':
+                READER_TYPE= 'pretrained' # None # 
+                pretrained_model = 'bert-base-uncased' # None # 
+                EMBEDDING_TYPE = None # "w2v" # 
+
+            elif M =='lstm' or  M =='cnn' or M == 'cnn_w2v' or M == 'lstm_w2v':
+                READER_TYPE= None 
+                pretrained_model = None 
+            else:
+                print(f'Not test transferability on {M}.')
+                continue
+
+            # Load Model
+            vocab, model = load_sst_model(f"{MODELS_DIR}{M}/",  MODEL_TYPE=M)
+
+
+            MODELS[M] = (deepcopy(model), deepcopy(vocab))
+
+    return MODELS
+
 
 def get_embedding_matrix():
     named_modules = dict(model.named_modules())

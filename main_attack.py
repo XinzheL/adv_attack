@@ -1,8 +1,7 @@
 
-
-from utils.allennlp_model import load_sst_model
+from utils.allennlp_model import load_sst_model, load_all_trained_models
 from utils.allennlp_predictor import AttackPredictorForBiClassification
-
+from utils.allennlp_data import load_sst_data
 from allennlp.interpret.attackers import Hotflip
 from utils.universal_attack import UniversalAttack
 import os
@@ -28,7 +27,7 @@ def attack(label_filter, MODEL_TYPE, sst_granularity = 2):
         if 'w2v' in MODEL_TYPE:
             EMBEDDING_TYPE =  "w2v" 
 
-    from utils.allennlp_data import load_sst_data
+   
     datareader, dev_data = load_sst_data('dev',\
             READER_TYPE=READER_TYPE, \
             pretrained_model = pretrained_model,
@@ -80,68 +79,18 @@ def attack(label_filter, MODEL_TYPE, sst_granularity = 2):
         "loss":  [ele for lst in loss_lst for ele in lst], \
         "iteration": range(len([ele for lst in loss_lst for ele in lst]))})
 
-    # save triggers and their transferability (accuracy on other models)
-    triggers = []
-    accs = {}
-    MODELS = {}
-    for M in os.listdir(MODELS_DIR):
-        if M != MODEL_TYPE:
-            if M == 'finetuned_bert':
-                READER_TYPE= 'pretrained' # None # 
-                pretrained_model = 'bert-base-uncased' # None # 
-                EMBEDDING_TYPE = None # "w2v" # 
-
-            elif M =='lstm' or 'cnn' :
-                READER_TYPE= None 
-                pretrained_model = None 
-            else:
-                print(f'Not test transferability on {M}.')
-                continue
-
-            # Load Model
-            vocab, model = load_sst_model(f"{MODELS_DIR}{M}/",  MODEL_TYPE=M)
-
-            _, test_data = load_sst_data('test',\
-                                            READER_TYPE=READER_TYPE, \
-                                            pretrained_model = pretrained_model,
-                                            granularity = str(sst_granularity)+'-class')
-
-            MODELS[M] = (deepcopy(model), deepcopy(vocab), deepcopy(list(test_data)))
-
-    for t in log_trigger_tokens:
-        triggers.append(str(t[0]) + '_' + str(t[1]) + '_' + str(t[2]))
-
-        # evaluate the transferability of other models
-        #if t == log_trigger_tokens[-1]: # only evaluate on the last one
-        for M in MODELS.keys():
-            model, vocab, test_data = MODELS[M]
-            #Evaluate with test data appended by triggers
-            noisy_test_data = UniversalAttack.prepend_batch(
-                UniversalAttack.filter_instances( \
-                    list(test_data), label_filter=label_filter, vocab=vocab
-                ), \
-                trigger_tokens=t, \
-                vocab = vocab
-            )
-
-            acc, _ = UniversalAttack.evaluate_instances_cls(noisy_test_data, model, vocab, cuda_device=0)
-            if M not in accs.keys():
-                accs[M] = [acc]
-            else:
-                accs[M].append(acc)
-                
-
-
-    result_df['triggers'] = triggers
-    for M in accs.keys():
-        result_df[f'{M}_accuracy'] = accs[M]
-
-    # result_long_df = pd.melt(result_df , ['iteration'])
+    # save triggers
+    # t=log_trigger_tokens[i] -> [the, the, the] where type(the) is `Token`
     
+    result_df['triggers'] = [str(t[0]) + '_' + str(t[1]) + '_' + str(t[2]) for t in log_trigger_tokens]
+
     result_df.to_csv(f'result_data/{MODEL_TYPE}_{str(label_filter)}.csv')
 
+
+
+
 if __name__ == "__main__":
-    MODEL_TYPES = ['finetuned_bert'] #  'lstm', 'lstm_w2v', 'cnn', 'cnn_tanh'
+    MODEL_TYPES = ['cnn_tanh'] #   , 'finetuned_bert', 'lstm', 'lstm_w2v', 'cnn', 'cnn_w2v'
     LABELS = [0, 1]
     for MODEL_TYPE in MODEL_TYPES:
         for label_filter in LABELS:
