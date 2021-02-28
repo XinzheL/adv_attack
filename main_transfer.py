@@ -50,8 +50,6 @@ if __name__ == "__main__":
     MODELS_DIR = 'checkpoints/bi_sst/'
     sst_granularity = 2
     MODEL_TYPES = ['lstm' , 'lstm_w2v', 'cnn', 'cnn_w2v']
-    READER_TYPE= None 
-    pretrained_model = None 
 
     # test triggers for ones in `MODELS_TO_CHOOSE` with chosen label
     # each has a `log_trigger_tokens`
@@ -64,10 +62,7 @@ if __name__ == "__main__":
         MODELS = load_all_trained_models(MODELS_DIR, MODEL_TYPES = MODEL_TYPES)
 
         # test data
-        _, test_data = load_sst_data('test',\
-                                        READER_TYPE=READER_TYPE, \
-                                        pretrained_model = pretrained_model,
-                                        granularity = str(sst_granularity)+'-class')
+        _, test_data = load_sst_data('test', MODEL_TYPE=None, granularity = str(sst_granularity)+'-class')
         test_data = list(test_data)
 
         

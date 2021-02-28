@@ -15,6 +15,13 @@ from allennlp.data.instance import Instance
 from allennlp.data.vocabulary import Vocabulary
 import allennlp.nn.util as nn_util
 
+from allennlp.data import Batch
+from allennlp_models.classification.dataset_readers.stanford_sentiment_tree_bank import StanfordSentimentTreeBankDatasetReader
+from allennlp.data.token_indexers import SingleIdTokenIndexer
+from allennlp.data.token_indexers import PretrainedTransformerIndexer
+from allennlp.data.tokenizers import PretrainedTransformerTokenizer
+from .bert_snli import BertSnliReader
+
 
 @DataLoader.register("my_simple", constructor="from_dataset_reader")
 class MySimpleDataLoader(DataLoader):
@@ -126,29 +133,27 @@ class AllennlpDataset(Dataset):
         self.vocab = vocab
 
 def collate_fn(batch):
-    from allennlp.data import Batch
     batch = Batch(batch)
     return batch.as_tensor_dict(batch.get_padding_lengths())
 
             
-def load_sst_data(split, READER_TYPE='None', pretrained_model = 'bert-base-uncased', granularity = '2-class'):
+def load_sst_data(split, MODEL_TYPE=None, granularity = '2-class'):
     
-
-    from allennlp_models.classification.dataset_readers.stanford_sentiment_tree_bank import StanfordSentimentTreeBankDatasetReader
-    from allennlp.data.token_indexers import SingleIdTokenIndexer
-    from allennlp.data.token_indexers import PretrainedTransformerIndexer
-    from allennlp.data.tokenizers import PretrainedTransformerTokenizer
+    """ 
+    Args:
+        MODEL_TYPE: used to indicate whether using pretrained tokenizer and indexer
+    """
     
     # setup reader
     assert split in ['dev', 'train', 'test']
     file_path = f'https://s3-us-west-2.amazonaws.com/allennlp/datasets/sst/{split}.txt'
     
-    if READER_TYPE == 'pretrained':
-        #tokenizer = PretrainedTransformerTokenizer(model_name=pretrained_model, add_special_tokens=False)
-        indexer = PretrainedTransformerIndexer(model_name=pretrained_model,) 
+    if 'bert' in MODEL_TYPE:
+        #tokenizer = PretrainedTransformerTokenizer(model_name=MODEL_TYPE, add_special_tokens=False)
+        indexer = PretrainedTransformerIndexer(model_name=MODEL_TYPE,) 
         tokenizer = indexer._allennlp_tokenizer
         reader = StanfordSentimentTreeBankDatasetReader(granularity=granularity, tokenizer=tokenizer, token_indexers={"tokens": indexer})
-    else: # READER_TYPE is None:
+    else:
         indexer = SingleIdTokenIndexer(lowercase_tokens=True) # word tokenizer
         reader = StanfordSentimentTreeBankDatasetReader(granularity=granularity, token_indexers={"tokens": indexer})
     # load file
@@ -159,9 +164,6 @@ def load_sst_data(split, READER_TYPE='None', pretrained_model = 'bert-base-uncas
 
 
 def load_snli_data(split, bert_model = 'bert-base-uncased'):
-    from bert_snli import BertSnliReader
-    from allennlp.data.token_indexers import PretrainedTransformerIndexer
-    from allennlp.data.tokenizers import PretrainedTransformerTokenizer
     assert split in ['dev', 'train', 'test']
     
     # setup reader

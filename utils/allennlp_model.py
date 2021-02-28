@@ -26,6 +26,7 @@ import allennlp
 from typing import Tuple
 from allennlp.data.data_loaders import SimpleDataLoader
 from .allennlp_data import MySimpleDataLoader
+from .allennlp_transformers import MyAttentionLayer, MyPooler
 
 from torch import save, load
 import torch
@@ -46,9 +47,6 @@ class SSTClassifier(Model):
         
         self.attention = attention
         
-            
-
-       
 
     def forward(self, tokens: Dict[str, Dict[str, torch.Tensor]], \
         label: torch.IntTensor = None) -> Dict[str, torch.Tensor]:
@@ -104,16 +102,15 @@ class BertForClassification(Model):
         return {'accuracy': self.accuracy.get_metric(reset)}
 
 
-def train_sst_model(output_dir, train_data, dev_data, \
-    MODEL_TYPE='finetuned_bert', \
-    EMBEDDING_TYPE = None,  \
-    pretrained_model = 'bert-base-uncased',
+def train_sst_model(output_dir, train_data, dev_data, MODEL_TYPE, \
+    EMBEDDING_TYPE = None, 
     num_epochs=3,
     bsz = 32,
     TRAIN_TYPE=None,
     LABELS = [0, 1],
     activation=None):
 
+    print('Begin Training...')
     # initialize vocab with specified 'labels' namespace
     from allennlp.data.fields import LabelField
     tmp_instances = []
@@ -122,7 +119,7 @@ def train_sst_model(output_dir, train_data, dev_data, \
         tmp_instances.append(Instance(fields={'labels': LabelField(str(label), skip_indexing=False)}))
     vocab = Vocabulary.from_instances(tmp_instances) 
     
-    if "finetuned_bert" in MODEL_TYPE:
+    if "bert" in MODEL_TYPE:
 
         # 2. token embedding
         # Problem: in huggingface, tokenizer is reponsible for tokenization and indexing which,
@@ -158,10 +155,10 @@ def train_sst_model(output_dir, train_data, dev_data, \
 
         # not sure the original idea using tags namespace in vocab, I choose ignoring it 
         #reader._token_indexers['tokens']._add_encoding_to_vocabulary_if_needed(vocab) 
-        token_embedding = PretrainedTransformerEmbedder(model_name=pretrained_model, train_parameters=True)
+        token_embedding = PretrainedTransformerEmbedder(model_name=MODEL_TYPE, train_parameters=True)
 
         # 3. seq2vec encoder
-        encoder = BertPooler(pretrained_model=pretrained_model, dropout=0.1, requires_grad=True)
+        encoder = MyPooler(pretrained_model=MODEL_TYPE, dropout=0.1, requires_grad=True)
 
         # 4. construct model
         
@@ -210,7 +207,7 @@ def train_sst_model(output_dir, train_data, dev_data, \
         # 4. construct model
         if "dot_product" in MODEL_TYPE:
             scoring_func = "dot_product"
-            from .allennlp_transformers import MyAttentionLayer
+            
             attention = MyAttentionLayer(
                 hidden_size=word_embedding_dim,
                 num_attention_heads=5,
@@ -225,7 +222,7 @@ def train_sst_model(output_dir, train_data, dev_data, \
       
     # 5. train model from scratch and save its weights
     # define optim
-    if "finetuned_bert" in MODEL_TYPE:
+    if "bert" in MODEL_TYPE:
         optimizer = AdamW(model.parameters(),
                         lr=5e-5,    # Default learning rate
                         eps=1e-8    # Default epsilon value
@@ -240,7 +237,7 @@ def train_sst_model(output_dir, train_data, dev_data, \
         train_loader, dev_loader = build_data_loaders(list(train_data), list(dev_data), vocab, bsz=bsz)
         trainer = build_trainer(model, output_dir, train_loader, dev_loader, num_epochs=num_epochs, optimizer=optimizer)
     elif TRAIN_TYPE == "error_min":
-        if 'finetuned_bert' in MODEL_TYPE:
+        if 'bert' in MODEL_TYPE:
             vocab_namespace='tags'
         elif 'lstm' in MODEL_TYPE:
             vocab_namespace='tokens'
@@ -329,11 +326,7 @@ def build_error_min_unlearnable_trainer(
 
 
 
-def load_sst_model(file_dir, \
-    model_path="model.th", \
-    vocab_path='vocab', \
-    MODEL_TYPE='finetuned_bert', \
-    pretrained_model='bert-base-uncased'):
+def load_sst_model(file_dir, MODEL_TYPE, model_path="model.th", vocab_path='vocab'):
     # load vocab and model
     from allennlp.data.vocabulary import Vocabulary
     
@@ -342,12 +335,12 @@ def load_sst_model(file_dir, \
     vocab = Vocabulary.from_files(vocab_path)
     
 
-    if "finetuned_bert" in MODEL_TYPE:
+    if "bert" in MODEL_TYPE:
         
         # embedding
-        token_embedding = PretrainedTransformerEmbedder(model_name=pretrained_model, train_parameters=True)
+        token_embedding = PretrainedTransformerEmbedder(model_name=MODEL_TYPE, train_parameters=True)
         # encoder
-        encoder = BertPooler(pretrained_model=pretrained_model, dropout=0.1, requires_grad=True)
+        encoder = MyPooler(pretrained_model=MODEL_TYPE, dropout=0.1, requires_grad=True)
         # construct model
         model = BertForClassification(vocab, BasicTextFieldEmbedder({"tokens": token_embedding}), encoder)
         
@@ -396,24 +389,11 @@ def load_all_trained_models(MODELS_DIR, MODEL_TYPES):
     MODELS = {}
     for M in os.listdir(MODELS_DIR):
         if M in MODEL_TYPES:
-            if M == 'finetuned_bert':
-                READER_TYPE= 'pretrained' # None # 
-                pretrained_model = 'bert-base-uncased' # None # 
-                EMBEDDING_TYPE = None # "w2v" # 
-
-            elif M =='lstm' or  M =='cnn' or M == 'cnn_w2v' or M == 'lstm_w2v':
-                READER_TYPE= None 
-                pretrained_model = None 
-            else:
-                print(f'Not test transferability on {M}.')
-                continue
-
             # Load Model
             vocab, model = load_sst_model(f"{MODELS_DIR}{M}/",  MODEL_TYPE=M)
-
-
             MODELS[M] = (deepcopy(model), deepcopy(vocab))
-
+        else:
+            print(f'Not test transferability on {M}.')
     return MODELS
 
 

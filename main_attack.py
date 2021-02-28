@@ -15,33 +15,25 @@ def attack(label_filter, MODEL_TYPE, sst_granularity = 2):
 
 
 
-    if 'finetuned_bert' in MODEL_TYPE:
+    if 'bert' in MODEL_TYPE:
         READER_TYPE= 'pretrained' 
-        pretrained_model = 'bert-base-uncased'  
         EMBEDDING_TYPE = None 
 
     elif  'lstm' in MODEL_TYPE or 'cnn' in MODEL_TYPE :
         READER_TYPE= None 
-        pretrained_model = None 
         EMBEDDING_TYPE = None 
         if 'w2v' in MODEL_TYPE:
             EMBEDDING_TYPE =  "w2v" 
 
-   
-    datareader, dev_data = load_sst_data('dev',\
-            READER_TYPE=READER_TYPE, \
-            pretrained_model = pretrained_model,
-            granularity = str(sst_granularity)+'-class')
-    _, test_data = load_sst_data('test',\
-            READER_TYPE=READER_TYPE, \
-            pretrained_model = pretrained_model,
-            granularity = str(sst_granularity)+'-class')
+    
+    datareader, dev_data = load_sst_data('dev', MODEL_TYPE, granularity = str(sst_granularity)+'-class')
+    _, test_data = load_sst_data('test', MODEL_TYPE, granularity = str(sst_granularity)+'-class')
 
         
     # load data and model
     vocab, model = load_sst_model(f"{MODELS_DIR}{MODEL_TYPE}/",  MODEL_TYPE=MODEL_TYPE)
 
-    if MODEL_TYPE == 'finetuned_bert':
+    if 'bert' in MODEL_TYPE:
         vocab_namespace='tags'
     elif 'lstm' in MODEL_TYPE or 'cnn' in MODEL_TYPE:
         vocab_namespace='tokens'
@@ -89,8 +81,9 @@ def attack(label_filter, MODEL_TYPE, sst_granularity = 2):
 
 
 
+
 if __name__ == "__main__":
-    MODEL_TYPES = ['cnn_tanh'] #   , 'finetuned_bert', 'lstm', 'lstm_w2v', 'cnn', 'cnn_w2v'
+    MODEL_TYPES = [ 'distilbert-base-cased',  'distilroberta-base', ]  # 'bert-base-cased', 'roberta-base',
     LABELS = [0, 1]
     for MODEL_TYPE in MODEL_TYPES:
         for label_filter in LABELS:

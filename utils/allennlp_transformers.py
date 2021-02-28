@@ -1,4 +1,4 @@
-from typing import Union, Optional, Dict
+from typing import Union, Optional, Dict, Any
 
 import torch
 
@@ -9,6 +9,12 @@ from allennlp.modules.transformer.transformer_module import TransformerModule
 from allennlp.modules.transformer.activation_layer import ActivationLayer
 from allennlp.modules.transformer.self_attention import SelfAttention
 from allennlp.modules.transformer.output_layer import OutputLayer
+from allennlp.modules.seq2vec_encoders.seq2vec_encoder import Seq2VecEncoder
+
+from overrides import overrides
+import torch
+from torch import nn
+
 
 
 
@@ -156,4 +162,71 @@ class TransformerEncoder(torch.nn.Module, FromParams):
         # layer_output = self.output(intermediate_output, attention_output) # Shape `batch_size x seq_len x hidden_dim`
         # outputs = (layer_output,) + outputs # same as `layer_output`
         return attention_output
+
+class Pooler(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.activation = nn.Tanh()
+
+    def forward(self, hidden_states):
+        # We "pool" the model by simply taking the hidden state corresponding
+        # to the first token.
+        first_token_tensor = hidden_states[:, 0]
+        pooled_output = self.dense(first_token_tensor)
+        pooled_output = self.activation(pooled_output)
+        return pooled_output
+
+@Seq2VecEncoder.register("my_pooler")
+class MyPooler(Seq2VecEncoder):
+    def __init__(
+        self,
+        pretrained_model: str,
+        *,
+        override_weights_file: Optional[str] = None,
+        override_weights_strip_prefix: Optional[str] = None,
+        requires_grad: bool = True,
+        dropout: float = 0.0,
+        transformer_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        super().__init__()
+
+        from allennlp.common import cached_transformers
+
+        model = cached_transformers.get(
+            pretrained_model,
+            False,
+            override_weights_file,
+            override_weights_strip_prefix,
+            **(transformer_kwargs or {}),
+        )
+
+        self._dropout = torch.nn.Dropout(p=dropout)
+
+        import copy
+
+        self.pooler = Pooler(model.config)
+        for param in self.pooler.parameters():
+            param.requires_grad = requires_grad
+        self._embedding_dim = model.config.hidden_size
+
+    @overrides
+    def get_input_dim(self) -> int:
+        return self._embedding_dim
+
+    @overrides
+    def get_output_dim(self) -> int:
+        return self._embedding_dim
+
+    def forward(
+        self, tokens: torch.Tensor, mask: torch.BoolTensor = None, num_wrapping_dims: int = 0
+    ):
+        pooler = self.pooler
+        for _ in range(num_wrapping_dims):
+            from allennlp.modules import TimeDistributed
+
+            pooler = TimeDistributed(pooler)
+        pooled = pooler(tokens)
+        pooled = self._dropout(pooled)
+        return pooled
 

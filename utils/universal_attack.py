@@ -24,7 +24,6 @@ from allennlp.data import Batch
 from allennlp.nn import util
 
 
-
 class UniversalAttack(Hotflip):
     """
     # Parameters
@@ -60,6 +59,8 @@ class UniversalAttack(Hotflip):
             self.trigger_tokens = []
             for _ in range(self.num_trigger_tokens):
                 self.trigger_tokens.append(Token("the"))
+
+
 
     @classmethod
     def prepend_batch(cls, instances, trigger_tokens=None, vocab=None):

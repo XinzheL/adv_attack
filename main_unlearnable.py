@@ -21,16 +21,6 @@ def train(TRAIN_TYPE, MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2, \
 
     output_dir = f"{MODELS_DIR}{MODEL_TYPE}/"
 
-    if MODEL_TYPE == 'finetuned_bert':
-        READER_TYPE= 'pretrained' 
-        pretrained_model = 'bert-base-uncased' 
-    
-    elif 'lstm' in MODEL_TYPE or 'cnn'  in MODEL_TYPE or 'transformer' in MODEL_TYPE:
-        READER_TYPE= None 
-        pretrained_model = None 
-    else:
-        print(f'Invalid MODEL_TYPE {MODEL_TYPE}')
-        exit()
 
 
     if 'w2v' in MODEL_TYPE:
@@ -38,11 +28,6 @@ def train(TRAIN_TYPE, MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2, \
     else:
         EMBEDDING_TYPE = None
 
-
-
-    
-
-        
 
     # load training data 
     from allennlp.data.vocabulary import Vocabulary
@@ -52,18 +37,13 @@ def train(TRAIN_TYPE, MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2, \
         else:
             vocab = Vocabulary.from_files(f'checkpoints/bi_sst/{MODEL_TYPE}/vocab/')
 
-    label_ids = [0, 1] # I hope it equals to label in LabelField, TODO: re-train it for lstm
+   
     from utils.allennlp_data import load_sst_data
-    reader, train_data = load_sst_data('train', \
-        READER_TYPE=READER_TYPE, \
-        pretrained_model = pretrained_model,
-        granularity = str(sst_granularity)+'-class')
+    reader, train_data = load_sst_data('train', MODEL_TYPE, granularity = str(sst_granularity)+'-class')
 
-    _, test_data = load_sst_data('dev', \
-        READER_TYPE=READER_TYPE, \
-        pretrained_model = pretrained_model,
-        granularity = str(sst_granularity)+'-class')
+    _, test_data = load_sst_data('dev', MODEL_TYPE, granularity = str(sst_granularity)+'-class')
 
+    # tokens are indexed in PretrainedTransformerTokenizer
     train_data, test_data = list(train_data), list(test_data)
 
     # train model
@@ -76,6 +56,7 @@ def train(TRAIN_TYPE, MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2, \
         from utils.universal_attack import UniversalAttack
         from allennlp.data.tokenizers import Token
         import pandas as pd
+        label_ids = [0, 1] 
         noisy_train_data = None
         # load trigger tokens and prepend to the instances with correponding class
         for label in label_ids: 
@@ -104,20 +85,19 @@ def train(TRAIN_TYPE, MODEL_TYPE, num_epochs=3, bsz = 32, sst_granularity = 2, \
         pass
         
 
-    train_sst_model(output_dir, train_data, test_data, \
-        MODEL_TYPE=MODEL_TYPE, \
-        EMBEDDING_TYPE = EMBEDDING_TYPE,  \
-        pretrained_model = pretrained_model, num_epochs=num_epochs, bsz = bsz,\
-        TRAIN_TYPE=TRAIN_TYPE,
-        LABELS=LABELS,
-        activation=activation)
+    train_sst_model(output_dir, train_data, test_data, MODEL_TYPE, \
+        EMBEDDING_TYPE = EMBEDDING_TYPE, num_epochs=num_epochs, bsz = bsz,\
+        TRAIN_TYPE=TRAIN_TYPE, LABELS=LABELS, activation=activation)
 
     
  
 if __name__ == "__main__":
+    # TODO: activation may be tested, now it uses default one
     activation = None #Activation.by_name('tanh')()
     #TRAIN_TYPES = [None, 'error_max', 'error_min' ]
-    MODEL_TYPES = [ 'cnn_w2v' ] #'cnn_tanh' , 'lstm', 'finetuned_bert'  `additive`, `linear`, 'lstm_dot_product'
+    # 'distilbert-base-cased',  'distilroberta-base', 'bert-base-cased', 'roberta-base', 
+    # 'cnn_tanh' , 'cnn_w2v','lstm'  ,  `additive`, `linear`, 'lstm_dot_product'
+    MODEL_TYPES = [ ] 
     for MODEL_TYPE in MODEL_TYPES:
         train(TRAIN_TYPE = None, MODEL_TYPE=MODEL_TYPE, \
             num_epochs=3, bsz = 32, sst_granularity = 2,\
