@@ -96,8 +96,8 @@ if __name__ == "__main__":
     activation = None #Activation.by_name('tanh')()
     #TRAIN_TYPES = [None, 'error_max', 'error_min' ]
     # 'distilbert-base-cased',  'distilroberta-base', 'bert-base-cased', 'roberta-base', 
-    # 'cnn_tanh' , 'cnn_w2v','lstm'  ,  `additive`, `linear`, 'lstm_dot_product'
-    MODEL_TYPES = [ ] 
+    # 'cnn_tanh' , 'lstm' , 'cnn', 'cnn_w2v', 'lstm_w2v',  `additive`, `linear`, 'lstm_dot_product'
+    MODEL_TYPES = ['distilbert-base-cased',  'distilroberta-base', 'bert-base-cased', 'roberta-base',  ] 
     for MODEL_TYPE in MODEL_TYPES:
         train(TRAIN_TYPE = None, MODEL_TYPE=MODEL_TYPE, \
             num_epochs=3, bsz = 32, sst_granularity = 2,\

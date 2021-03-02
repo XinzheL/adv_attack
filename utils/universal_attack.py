@@ -64,8 +64,11 @@ class UniversalAttack(Hotflip):
 
     @classmethod
     def prepend_batch(cls, instances, trigger_tokens=None, vocab=None):
-        
-        for instance in instances: 
+        """
+        trigger_tokens List[Token] ：
+        """
+        instances_with_triggers = deepcopy(instances)
+        for instance in instances_with_triggers: 
             if str(instance.fields['tokens'].tokens[0]) == '[CLS]':
                 instance.fields['tokens'].tokens = [instance.fields['tokens'].tokens[0]] + \
                     trigger_tokens + \
@@ -80,7 +83,7 @@ class UniversalAttack(Hotflip):
         # trigger_sequence_tensor = trigger_sequence_tensor.repeat(len(instances), 1)
         # batch['tokens']['tokens']['tokens'] = torch.cat((trigger_sequence_tensor, batch['tokens']['tokens']['tokens'].clone()), 1)
         
-        return instances
+        return instances_with_triggers
 
     @classmethod
     def filter_instances(cls, instances, label_filter, vocab=None):
@@ -144,11 +147,11 @@ class UniversalAttack(Hotflip):
             dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, collate_fn=lambda b: b)
             for batch in dataloader:
                 
-                batch_copy = deepcopy(batch)
+                
 
                 # set the labels equal to the target (backprop from the target class, not model prediction)
                 #batch_copy[0]['label'] = int(target_label) * torch.ones_like(batch_copy[0]['label']).cuda()
-                batch_prepended = self.prepend_batch(batch_copy, trigger_tokens=self.trigger_tokens, vocab=self.vocab)
+                batch_prepended = self.prepend_batch(deepcopy(batch), trigger_tokens=self.trigger_tokens, vocab=self.vocab)
 
                 
                 

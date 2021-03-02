@@ -83,7 +83,8 @@ def attack(label_filter, MODEL_TYPE, sst_granularity = 2):
 
 
 if __name__ == "__main__":
-    MODEL_TYPES = [ 'distilbert-base-cased',  'distilroberta-base', ]  # 'bert-base-cased', 'roberta-base',
+    #  , 'distilroberta-base'
+    MODEL_TYPES = [ 'bert-base-cased','distilbert-base-cased', 'roberta-base', 'distilroberta-base' ]  #  'lstm' , 'cnn', 'cnn_w2v', 'lstm_w2v'
     LABELS = [0, 1]
     for MODEL_TYPE in MODEL_TYPES:
         for label_filter in LABELS:
