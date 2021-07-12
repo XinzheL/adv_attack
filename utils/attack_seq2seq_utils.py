@@ -1,5 +1,3 @@
-
-
 #### adversary_criterion
 import math
 import torch
