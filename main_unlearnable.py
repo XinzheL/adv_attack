@@ -56,14 +56,17 @@ def train(MODEL_TYPE, num_epochs=3, bsz = 32):
 
 
  
-if __name__ == "__main__":
-    TRAIN_TYPES = [None, 'error_max', 'error_min' ]
-    MODEL_TYPES = ['distilbert-base-cased',  'distilroberta-base', 'bert-base-cased', 'roberta-base',  ] 
-    for MODEL_TYPE in MODEL_TYPES:
-        train(TRAIN_TYPE = None, MODEL_TYPE=MODEL_TYPE, \
-            num_epochs=3, bsz = 32)
-    
+# if __name__ == "__main__":
+#     TRAIN_TYPES = [None, 'error_max', 'error_min' ]
+#     MODEL_TYPES = ['distilbert-base-cased',  'distilroberta-base', 'bert-base-cased', 'roberta-base',  ] 
+#     for MODEL_TYPE in MODEL_TYPES:
+#         train(TRAIN_TYPE = None, MODEL_TYPE=MODEL_TYPE, \
+#             num_epochs=3, bsz = 32)
 
-    
 
-    
+
+
+
+
+
+

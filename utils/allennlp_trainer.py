@@ -18,8 +18,22 @@ from typing import Dict, Union, Optional, List
 from copy import deepcopy
 import os
 
+def train_with_transformers(pretrained,train_data, dev_data):
+    # texts -> vectors
+    from allennlp.data.fields import LabelField
+    tmp_instances = []
+    for label in LABELS:
+        # _label_index should not be set, otherwise Vocabulary couter would not count LabelField
+        tmp_instances.append(Instance(fields={'labels': LabelField(str(label), skip_indexing=False)}))
+    vocab = Vocabulary.from_instances(tmp_instances) 
+    
 
-def train_sst_model(output_dir, train_data, dev_data, MODEL_TYPE, \
+    # construct model
+    token_embedding = PretrainedTransformerEmbedder(model_name=pretrained, train_parameters=True)
+    encoder = MyPooler(pretrained_model=pretrained, dropout=0.1, requires_grad=True)
+    model = BertForClassification(vocab, BasicTextFieldEmbedder({"tokens": token_embedding}), encoder)
+
+def train(output_dir, train_data, dev_data, MODEL_TYPE, \
     EMBEDDING_TYPE = None, 
     num_epochs=3,
     bsz = 32,
@@ -28,80 +42,58 @@ def train_sst_model(output_dir, train_data, dev_data, MODEL_TYPE, \
     activation=None):
 
     print('Begin Training...')
-    # initialize vocab with specified 'labels' namespace
-    from allennlp.data.fields import LabelField
-    tmp_instances = []
-    for label in LABELS:
-        # _label_index should not be set, otherwise Vocabulary couter would not count LabelField
-        tmp_instances.append(Instance(fields={'labels': LabelField(str(label), skip_indexing=False)}))
-    vocab = Vocabulary.from_instances(tmp_instances) 
+    # texts -> vectors
+    vocab = Vocabulary.from_instances(train_data) 
+    vocab_size = vocab.get_vocab_size('tokens')
+    word_embedding_dim = 300
+    if EMBEDDING_TYPE is None:
+        token_embedding = Embedding(num_embeddings=vocab_size, embedding_dim=word_embedding_dim)
+    elif EMBEDDING_TYPE == "w2v":
+        
+        embedding_path = "https://dl.fbaipublicfiles.com/fasttext/vectors-english/crawl-300d-2M.vec.zip"
+        weight = _read_pretrained_embeddings_file(embedding_path,
+                                                embedding_dim=word_embedding_dim,
+                                                vocab=vocab,
+                                                namespace="tokens")
+        token_embedding = Embedding(num_embeddings=vocab_size,
+                                    embedding_dim=word_embedding_dim,
+                                    weight=weight,
+                                    trainable=False)
     
-    if "bert" in MODEL_TYPE:
-
+    word_embeddings = BasicTextFieldEmbedder({"tokens": token_embedding})
         
-        token_embedding = PretrainedTransformerEmbedder(model_name=MODEL_TYPE, train_parameters=True)
-
-        # 3. seq2vec encoder
-        encoder = MyPooler(pretrained_model=MODEL_TYPE, dropout=0.1, requires_grad=True)
-
-        # 4. construct model
-        
-        model = BertForClassification(vocab, BasicTextFieldEmbedder({"tokens": token_embedding}), encoder)
-        
+    # construct model
+    if 'lstm' in MODEL_TYPE:
+        encoder = PytorchSeq2VecWrapper(LSTM(word_embedding_dim,
+                                                    hidden_size=512,
+                                                    num_layers=2,
+                                                    batch_first=True))
+    elif 'cnn' in MODEL_TYPE:
+        encoder = CnnEncoder(word_embedding_dim, num_filters=6, conv_layer_activation=activation)
+    # elif 'transformer' in MODEL_TYPE:
+    #     
+    #     # TODO: try different scoring function
+    #     encoder = TransformerLayer(hidden_size=word_embedding_dim, intermediate_size=521, \
+    #         num_attention_heads=5, attention_dropout=0.0, hidden_dropout=0.0, \
+    #         activation="relu", add_cross_attention=False)
     else:
-        # 2. token embedding
-        vocab.extend_from_instances(train_data)
-        # vocab = Vocabulary.from_instances(train_data)
-        vocab_size = vocab.get_vocab_size('tokens')
-        word_embedding_dim = 300
-        if EMBEDDING_TYPE is None:
-            token_embedding = Embedding(num_embeddings=vocab_size, embedding_dim=word_embedding_dim)
-        elif EMBEDDING_TYPE == "w2v":
-            
-            embedding_path = "https://dl.fbaipublicfiles.com/fasttext/vectors-english/crawl-300d-2M.vec.zip"
-            weight = _read_pretrained_embeddings_file(embedding_path,
-                                                    embedding_dim=word_embedding_dim,
-                                                    vocab=vocab,
-                                                    namespace="tokens")
-            token_embedding = Embedding(num_embeddings=vocab_size,
-                                        embedding_dim=word_embedding_dim,
-                                        weight=weight,
-                                        trainable=False)
-        
-        word_embeddings = BasicTextFieldEmbedder({"tokens": token_embedding})
-         
-        # 3. seq2vec encoder
-        if 'lstm' in MODEL_TYPE:
-            encoder = PytorchSeq2VecWrapper(LSTM(word_embedding_dim,
-                                                        hidden_size=512,
-                                                        num_layers=2,
-                                                        batch_first=True))
-        elif 'cnn' in MODEL_TYPE:
-            encoder = CnnEncoder(word_embedding_dim, num_filters=6, conv_layer_activation=activation)
-        # elif 'transformer' in MODEL_TYPE:
-        #     
-        #     # TODO: try different scoring function
-        #     encoder = TransformerLayer(hidden_size=word_embedding_dim, intermediate_size=521, \
-        #         num_attention_heads=5, attention_dropout=0.0, hidden_dropout=0.0, \
-        #         activation="relu", add_cross_attention=False)
-        else:
-            print(f'Invalid MODEL_TYPE {MODEL_TYPE}')
-            exit()
+        print(f'Invalid MODEL_TYPE {MODEL_TYPE}')
+        exit()
 
-        # 4. construct model
-        if "dot_product" in MODEL_TYPE:
-            scoring_func = "dot_product"
-            
-            attention = MyAttentionLayer(
-                hidden_size=word_embedding_dim,
-                num_attention_heads=5,
-                attention_dropout=0,
-                hidden_dropout=0,
-                scoring_func= scoring_func,
-            )
-        else:
-            attention = None
-        model = SSTClassifier(word_embeddings, encoder, vocab, attention=attention)
+    
+    if "dot_product" in MODEL_TYPE:
+        scoring_func = "dot_product"
+        
+        attention = MyAttentionLayer(
+            hidden_size=word_embedding_dim,
+            num_attention_heads=5,
+            attention_dropout=0,
+            hidden_dropout=0,
+            scoring_func= scoring_func,
+        )
+    else:
+        attention = None
+    model = SSTClassifier(word_embeddings, encoder, vocab, attention=attention)
     model.cuda()
       
     # 5. train model from scratch and save its weights
@@ -115,6 +107,7 @@ def train_sst_model(output_dir, train_data, dev_data, MODEL_TYPE, \
         
         parameters = [[n, p] for n, p in model.named_parameters() if p.requires_grad]
         optimizer = AdamOptimizer(parameters)
+    
     # from allennlp.training.learning_rate_schedulers import LearningRateScheduler
     # scheduler = LearningRateScheduler()
     if TRAIN_TYPE is None or TRAIN_TYPE == "error_max":
